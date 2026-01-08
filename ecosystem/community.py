@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from numpy.typing import NDArray
 
 import cobra
 from cobra import Model, Reaction
@@ -198,8 +199,7 @@ class EcosystemCommunity():
         This method updates reaction bounds in the provided community model by scaling each 
         member's reactions proportionally to its relative abundance in the community.
 
-        IMPORTANT: This method must be called *only* inside a model context
-        manager, e.g.::
+        IMPORTANT: This method must be called *only* inside a model context manager, e.g.::
 
             with community_model:
                 community.apply_member_fraction_bounds(community_model, fractions)
@@ -215,6 +215,10 @@ class EcosystemCommunity():
         member_fractions : np.ndarray
             Relative abundance of each community member. 
         """
+        # here we set fractions to zero to avoid errors setting bounds
+        if np.all(np.isnan(member_fractions)): 
+            member_fractions = np.array([0.0]*member_fractions.size)   
+
         # reactions are assign to each community member
         # community.set_member_reactions()
         for i, member in enumerate(self.member_model_ids):
@@ -226,6 +230,41 @@ class EcosystemCommunity():
                 reaction = cast(Reaction, mirror_community_model.reactions.get_by_id(reaction_id))
                 old_bounds = reaction.bounds
                 reaction.bounds = (old_bounds[0] * member_fraction, old_bounds[1] * member_fraction)
+
+
+    def fix_growth_rates(self, mirror_community_model: Model, mu_array: NDArray[np.floating]) -> None:
+        """Fix the biomass production rate of each community member.
+
+        This method constrains the biomass reaction of each member to a fixed growth rate by setting its 
+        lower and upper bounds to the same value.
+
+        IMPORTANT: This method must be called *only* inside a model context manager, e.g.::
+
+            with community_model:
+                community.apply_member_fraction_bounds(community_model, fractions)
+                
+        Otherwise, reaction bounds will be permanently modified.
+
+        Parameters
+        ----------
+        mirror_community_model : cobra.Model
+            Community model whose biomass reaction bounds will be temporarily constrained.
+
+        member_mu : np.ndarray, shape (n_members,)
+            Fixed biomass production rates for each community member. Each value is imposed as an equality 
+            constraint: v_biomass_i = member_mu[i]
+        """
+        for index, member_objectives in enumerate(self.ecosystem.objectives):    
+            if len(member_objectives) != 1:
+                raise RuntimeError(f"Warning: More than one reaction in {self.member_model_ids[index]} objective function. Not supported!")        
+                
+            #new bounds for member ix objective function reaction:
+            new_bounds = (mu_array[index], mu_array[index])    
+ 
+            #change bounds for each objective reaction
+            for reaction_id in member_objectives.keys(): # member_objectives should be single key dictionary
+                reaction = cast(Reaction, mirror_community_model.reactions.get_by_id(reaction_id))
+                reaction.bounds = new_bounds
 
 
     # VLP PENDING ===========================================================================================

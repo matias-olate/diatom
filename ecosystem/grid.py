@@ -13,7 +13,7 @@ class EcosystemGrid():
         self.ecosystem = base_ecosystem
 
         self.points: NDArray[np.floating] = np.array([]) # shape: (numPoints**2, 2)
-        self.feasible_points: NDArray[np.floating] = np.array([])
+        self.feasible_points: NDArray[np.bool] = np.array([])
         self.member_fractions: NDArray[np.floating] = np.array([])
 
         self.step: int = 0
@@ -73,10 +73,9 @@ class EcosystemGrid():
         
         # builds 1D slices
         slices = [np.linspace(mins[i], maxs[i], numPoints) for i in range(size)]
-
         # builds 2D grid
-        X, Y = np.meshgrid(slices[0], slices[1], indexing='ij') #.T.reshape() #NJ
-        grid_points = np.column_stack([X.ravel(), Y.ravel()]) # shape: (numPoints**2, 2)
+        rgrid = np.array(np.meshgrid(slices[0], slices[1]))
+        grid_points = np.column_stack([rgrid[i,:].ravel() for i in range(size)]) # shape: (numPoints**2, 2)
         print(f"points shape: {grid_points.shape}")
      
         # skips first point if true
