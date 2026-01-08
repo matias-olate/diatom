@@ -1,13 +1,13 @@
+from typing import TYPE_CHECKING, Literal
+
 import numpy as np
 import pandas as pd
-
 import matplotlib.ticker as mtick
 
 from scipy.spatial import distance
-from sklearn.cluster import DBSCAN, OPTICS,SpectralClustering, AffinityPropagation
 from scipy.cluster.hierarchy import fcluster
 from scipy.cluster import hierarchy
-from typing import TYPE_CHECKING
+from sklearn.cluster import DBSCAN, OPTICS, SpectralClustering, AffinityPropagation
 
 if TYPE_CHECKING:
     from ecosystem.base import BaseEcosystem
@@ -16,27 +16,31 @@ if TYPE_CHECKING:
 class EcosystemClustering():
     def __init__(self, base_ecosystem: "BaseEcosystem"):
         self.ecosystem = base_ecosystem
-        self.k, self.rk = None, None
-        self.clusters, self.rclusters = None, None
+        self.grid_n_clusters: int = 0
+        self.reaction_n_clusters: int = 0
+        self.grid_clusters, self.reaction_clusters = None, None
         self.bin_vector_df = None
 
+
     @property
-    def qual_vector_df(self): # this class only reads this attribute, it doesn't modify it
+    def qual_vector_df(self) -> pd.DataFrame:
         return self.ecosystem.analyze.qual_vector_df
 
 
     # NO SE USA EN NINGUN MODULO
-    def clusterReactions(self, method, changing= True, **kwargs):
+    def set_reaction_clusters(self, method, changing= True, **kwargs) -> None:
+        """Cluster reactions based on their qualitative FVA profiles across grid points.
 
+        Optionally restricts clustering to reactions whose qualitative state changes
+        across the grid. Stores cluster labels and number of clusters as attributes.
+        """
         if self.qual_vector_df is None:
             print("No qualitative FVA values stored. Run qual_fva analysis first!")
             return
 
-        print("Calculating jaccard distances between grid points...") 
-        
         z = self.qual_vector_df.copy()
         self.changed_rxns = None
-        if changing: #clustering considering changing reactions only:
+        if changing: # clustering considering changing reactions only:
             changed_rxns = self.qual_vector_df.max(axis=0) != self.qual_vector_df.min(axis=0)
             changed_rxns_ids = z.columns[changed_rxns]
             z = z[changed_rxns_ids]
@@ -44,55 +48,43 @@ class EcosystemClustering():
             
         z = z.values
         z = z.T
-        nrxns = z.shape[0]
-        distance_metric = 'jaccard'
-        dvector = distance.pdist(z,distance_metric)
-        dmatrix = distance.squareform(dvector)
-        
-        print("Clustering %d reactions ..." % nrxns) 
-        # Clustering methods
-        # hierarchical + fcluster
-        # dbscan (eps,min_samples)
-        # optics
-        # AffinityPropagation
-        # SpectralClustering 
-       
-        if method == 'hierarchical':
-            rk, rclusters = getHIERARCHICALclusters(dvector,**kwargs)
-        elif method == 'dbscan':
-            rk, rclusters = getDBSCANclusters(dmatrix,**kwargs)  
-        elif method == 'optics':
-            rk, rclusters = getOPTICSclusters(dmatrix,**kwargs)
-        elif method == 'SpectralClustering':
-            rk, rclusters = getSCclusters(dmatrix,**kwargs)          
-        elif method == 'AffinityPropagation':
-            rk, rclusters = getAPclusters(dmatrix, **kwargs)
-            
-        self.rk = rk
-        self.rclusters = rclusters    
-        print("Done!")    
 
+        print(f"Clustering {z.shape[0]} reactions ...") 
+        self.reaction_n_clusters, self.reaction_clusters = self._map_clusters(method, z, **kwargs)
 
-    # SE LLAMA EXPLICITAMENTE    
-    def clusterPoints(self, method, numeric_delta=1e-4, vector = 'qual_vector', run_fva = True , **kwargs):
-  
+ 
+    def set_grid_clusters(self, method: str, vector: str = 'qual_vector', **kwargs) -> None:
+        """Cluster grid points based on qualitative or binary flux vectors.
+
+        Uses pairwise Jaccard distances between grid points and stores the resulting
+        cluster labels and number of clusters as attributes.
+        """
         if self.qual_vector_df is None:
             print("No qualitative FVA values stored. Run qual_fva analysis first!")
             return
 
-        print("Calculating jaccard distances between grid points...") 
-        
         #NJT to use qual_vector as well as bin_vector if required
-        if vector =='qual_vector':
-            z = self.qual_vector_df.values 
+        if vector == 'qual_vector':
+            qualitative_vector = self.qual_vector_df.values 
         elif vector == 'bin_vector' and self.bin_vector_df is not None:
-            z = self.bin_vector_df.values
-        
-        distance_metric = 'jaccard'
-        dvector = distance.pdist(z,distance_metric) # np.ndarray
-        dmatrix = distance.squareform(dvector)      # np.ndarray
-        
+            qualitative_vector = self.bin_vector_df.values
+        else:
+            raise ValueError(f"Unknown vector: {vector}")
+
         print("Clustering grid points ...") 
+        self.grid_n_clusters, self.grid_clusters = self._map_clusters(method, qualitative_vector, **kwargs)
+
+
+    @staticmethod
+    def _map_clusters(method: str, qualitative_vector: np.ndarray, **kwargs) -> tuple[int, np.ndarray]:
+        """Compute pairwise Jaccard distances and apply a clustering method.
+
+        Returns the number of clusters and a vector of cluster labels.
+        """
+        distance_metric = 'jaccard'
+        dvector = distance.pdist(qualitative_vector, distance_metric) 
+        dmatrix = distance.squareform(dvector)     
+        
         # Clustering methods
         # hierarchical + fcluster
         # dbscan (eps,min_samples)
@@ -101,79 +93,99 @@ class EcosystemClustering():
         # SpectralClustering 
        
         if method == 'hierarchical':
-            k, clusters = getHIERARCHICALclusters(dvector,**kwargs)
+            n_clusters, clusters = getHIERARCHICALclusters(dvector,**kwargs)
         elif method == 'dbscan':
-            k, clusters = getDBSCANclusters(dmatrix,**kwargs)  
+            n_clusters, clusters = getDBSCANclusters(dmatrix,**kwargs)  
         elif method == 'optics':
-            k, clusters = getOPTICSclusters(dmatrix,**kwargs)
+            n_clusters, clusters = getOPTICSclusters(dmatrix,**kwargs)
         elif method == 'SpectralClustering':
-            k, clusters = getSCclusters(dmatrix,**kwargs)          
+            n_clusters, clusters = getSCclusters(dmatrix,**kwargs)          
         elif method == 'AffinityPropagation':
-            k, clusters = getAPclusters(dmatrix, **kwargs)
-            
-        self.k = k
-        self.clusters = clusters    
-        print("Done!")  
-
-
-    # SE USA EN AMBOS MODULOS
-    def get_cluster_reaction_values(self, vector = 'qual_vector', thr=0.75, changing= True, convert=True):
+            n_clusters, clusters = getAPclusters(dmatrix, **kwargs)
+        else:
+            raise ValueError(f"Unknown method: {method}")
         
-        if self.clusters is None:
+        print("Done!")    
+        
+        return n_clusters, clusters
+
+
+    #function to get representative qualitative values of a reaction in a cluster
+    @staticmethod
+    def _get_representative_qualitative_values(cluster_column: pd.Series, threshold: float) -> int | None:
+        """Return the dominant qualitative value in a cluster if it exceeds a frequency threshold.
+        If the threshold is not met, returns None."""
+        total = len(cluster_column)
+
+        qualitative_values, counts = np.unique(cluster_column, return_counts=True)
+        print(f'thresholds: {counts/total}, qualitative_values: {qualitative_values, counts, total}')
+        representative = qualitative_values[counts/total >= threshold]
+         
+        if representative.size > 0:
+            return representative[0] # qualitative value present if at least threshold of reactions in cluster  
+        
+        return None    
+
+
+    def get_grid_cluster_qual_profiles(self, vector: str = 'qual_vector', threshold: float = 0.75,
+                                     changing: bool = True, convert: bool = True) -> pd.DataFrame:
+        """Compute representative qualitative reaction profiles for each grid cluster.
+
+        For each grid cluster, assigns a qualitative value to each reaction if it
+        appears in at least a given fraction of grid points. Optionally filters
+        reactions that change between clusters and converts qualitative codes.
+        """
+        if self.grid_clusters is None:
             raise RuntimeError("Missing clustering/qualitative FVA results!")
         
-        #function to get representative qualitative values of a reaction in a cluster
-        def get_rep_vals(x,thr):
-            rep_val = None
-            total = len(x)
-            qual_vals, counts = np.unique(x, return_counts=True)
-            rep = qual_vals[counts/total >= thr]
-         
-            if rep.size > 0:
-                return rep[0]   #qualitative value present if at least thr of reactions in cluster  
-            return None       
-               
         #NJT to use qual_vector as well as bin_vector if required
         if vector =='qual_vector'and self.qual_vector_df is not None:
-            z = self.qual_vector_df
+            vector_df = self.qual_vector_df
         elif vector == 'bin_vector' and self.bin_vector_df is not None:
-            z = self.bin_vector_df
+            vector_df = self.bin_vector_df
+        else:
+            raise ValueError(f"Unknown vector: {vector}")
         
-        vector_df = z.astype('int32')
+        vector_df = vector_df.astype('int32')
         
-        cluster_ids = np.arange(1,self.k+1)
-        cluster_dfs = [vector_df[self.clusters == c] for c in cluster_ids]
-        aux = [ df.apply(get_rep_vals, thr=thr) for df in cluster_dfs]
-        reps = pd.concat(aux, axis=1)
-        reps.columns = ['c%d' % x for x in cluster_ids]
+        cluster_ids = np.arange(1, self.grid_n_clusters + 1)
+        cluster_dfs = [vector_df[self.grid_clusters == cluster_id] for cluster_id in cluster_ids]
+  
+        representatives_list = [cluster_df.apply(self._get_representative_qualitative_values, 
+                                                 threshold=threshold) for cluster_df in cluster_dfs]
+        
+        representatives = pd.concat(representatives_list, axis=1).astype('float')
+        representatives.columns = [f'c{cluster_id}' for cluster_id in cluster_ids]
 
-        reps = reps.astype('float')
-        
-        if changing: #report only reactions that have different qualitative values in at least two clusters
-            changing_filter = reps.apply(lambda x: x.unique().size > 1, axis = 1)    
-            reps = reps[changing_filter.values]
+        if changing: # report only reactions that have different qualitative values in at least two clusters
+            changing_filter = representatives.apply(lambda x: x.unique().size > 1, axis = 1)    
+            representatives = representatives[changing_filter]
         
         if convert:
-            cat_dict = {-3.0: '-', -2.0: '--',-1.0: '-0',1.0: '0+',0.0: '0',2.0: '++',3.0: '+',4.0: '-+',5.0: 'err',100.0: 'var'}
-            reps = reps.replace(cat_dict)
+            representatives = representatives.replace(self.ecosystem.analyze.qualitative_dict)
 
-        return reps
+        return representatives
 
 
-    # SE USA EN AMBOS MODULOS
     @staticmethod
-    def compare_clusters(clusters_df, cid_1, cid_2):
+    def compare_clusters(clusters_df: pd.DataFrame, cluster_id1: str | int, cluster_id2: str | int) -> pd.DataFrame:
+        """Compare qualitative values between two clusters.
         
-        #juice
-        if isinstance(cid_1, int):
-            cid_1 = 'c%d' % cid_1
-        if isinstance(cid_2, int):
-            cid_2 = 'c%d' % cid_2            
+        Returns a dataframe whose rows only display qualitative values that are different between 
+        the clusters."""
+
+        if isinstance(cluster_id1, int):
+            cluster_id1 = 'c%d' % cluster_id1
+        if isinstance(cluster_id2, int):
+            cluster_id2 = 'c%d' % cluster_id2            
         
-        df = clusters_df[[cid_1,cid_2]]
-        changing_filter = df.apply(lambda x: x.unique().size > 1, axis = 1) 
-        df = df[changing_filter.values]
-        return df
+        comparative_df = clusters_df[[cluster_id1, cluster_id2]]
+        
+        # filter out rows where the two clusters share values
+        changing_filter = comparative_df[cluster_id1] != comparative_df[cluster_id2]
+        comparative_df = comparative_df[changing_filter]
+
+        return comparative_df
     
 
     # NO SE USA EN NINGUN MODULO    
@@ -210,7 +222,7 @@ class EcosystemClustering():
         cat_percents.rename(columns = cat_dict, inplace=True)
         #plot
         ax = cat_percents.plot.barh(stacked=True, cmap=cmap,figsize=figsize)
-        ax.legend(loc='center left',bbox_to_anchor=(1.0, 0.5),title='reaction category');
+        ax.legend(loc='center left',bbox_to_anchor=(1.0, 0.5),title='reaction category')
         ax.xaxis.set_major_formatter(mtick.PercentFormatter())
         ax.set_ylabel('clusters')
         ax.set_xlabel('reactions')
@@ -264,10 +276,14 @@ def getOPTICSclusters(dmatrix: np.ndarray, max_eps: float = 0.05,
     return k, clusters # clusters are indexed from 0, includes outliers as -1
 
 
-def getSCclusters(dmatrix: np.ndarray, assign_labels: str = "discretize",
+AssignLabels = Literal["kmeans", "discretize", "cluster_qr"]
+
+
+def getSCclusters(dmatrix: np.ndarray, assign_labels: AssignLabels = "discretize",
                   random_state: int = 0, k: int = 20, delta: float = 0.2, 
                   **kwards) -> tuple[int, np.ndarray]:
-    
+    assert assign_labels in ['kmeans', 'discretize', 'cluster_qr']
+
     #transformación de matriz de distancia a matriz de similitud. Vía aplicación de Gaussian (RBF, heat) kernel:
     sim_matrix = np.exp(- dmatrix ** 2 / (2. * delta ** 2))
     
@@ -289,5 +305,3 @@ def getAPclusters(dmatrix: np.ndarray, **kwards) -> tuple[int, np.ndarray]:
     return k, clusters # clusters are indexed from 0, includes outliers as -1
 
 
-def relabel_clusters(cluster_array: np.ndarray) -> np.ndarray:
-    pass

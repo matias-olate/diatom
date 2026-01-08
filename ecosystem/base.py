@@ -1,11 +1,11 @@
+from cobra import Model
+
 # local scripts
 from ecosystem.community import EcosystemCommunity
 from ecosystem.grid import EcosystemGrid
 from ecosystem.analyze import EcosystemAnalyze
 from ecosystem.plot import EcosystemPlot
 from ecosystem.clustering import EcosystemClustering
-
-from cobra import Model
 
 
 class BaseEcosystem():

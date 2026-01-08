@@ -1,13 +1,12 @@
+from typing import Optional, TYPE_CHECKING
+from dataclasses import dataclass
+
 import numpy as np
+from scipy.spatial import Delaunay
 
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 from matplotlib.collections import LineCollection
-from dataclasses import dataclass
-from scipy.spatial import Delaunay
-from typing import Optional, TYPE_CHECKING
-
 
 if TYPE_CHECKING:
     from ecosystem.base import BaseEcosystem
@@ -57,7 +56,6 @@ class EcosystemPlot():
                       xlabel = None, ylabel = None, figsize: tuple[int, int] = (11,12), 
                       to_plot: Optional[str] = None, show_edge: bool = False, frac_prefix = None, 
                       saveFile: str = '', fractions = None, title: Optional[str] = None) -> None:
-        
         """ Plots a 2D slice of the grid. The remaining dimensions of the grid are kept at fixed values.
             Individual organism models of fixed dimensions are those determined by 'prefixes'. Their 
             objective function values are fixed to 'fixed_values'.   
@@ -184,8 +182,8 @@ class EcosystemPlot():
 
         
     def _cluster_plot(self, slice_indexes, slice_points, plot_settings: PlotSettings, fractions = None):        
-        slice_colors = self.ecosystem.clustering.clusters[slice_indexes] #slice points clusters
-        k = self.ecosystem.clustering.k            
+        slice_colors = self.ecosystem.clustering.grid_clusters[slice_indexes] #slice points clusters
+        k = self.ecosystem.clustering.grid_n_clusters            
         color_labels = ['']+['c'+ str(x+1) for x in range(k)] 
         pfrac = self.pfractions
         if fractions is not None:

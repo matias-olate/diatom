@@ -1,8 +1,9 @@
+from typing import Any, cast
+
 from cobra import Metabolite, Reaction, Model
 from cobra.util.solver import linear_reaction_coefficients
 
 from ecosystem.base import BaseEcosystem
-from typing import Any, cast
 
 Numerical = int | float
 

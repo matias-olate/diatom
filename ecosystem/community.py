@@ -1,16 +1,15 @@
+from typing import Any, Iterable, TYPE_CHECKING, cast
+
 import numpy as np
 import pandas as pd
 from numpy.typing import NDArray
+from scipy.sparse import lil_matrix
 
 import cobra
 from cobra import Model, Reaction
 from cobra.util.array import create_stoichiometric_matrix
-from scipy.sparse import lil_matrix
-
 from benpy import vlpProblem
 from benpy import solve as bensolve
-
-from typing import Any, Iterable, TYPE_CHECKING, cast
 
 Numerical = int | float
 

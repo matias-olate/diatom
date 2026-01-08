@@ -1,8 +1,10 @@
+from typing import Any, TYPE_CHECKING
+from functools import reduce
+
 import numpy as np
 from numpy.typing import NDArray
 
-from functools import reduce
-from typing import Any, TYPE_CHECKING
+from cobra import Model
 
 if TYPE_CHECKING:
     from ecosystem.base import BaseEcosystem
@@ -114,7 +116,7 @@ class EcosystemGrid():
         self.member_fractions = np.array([[p[0], 1-p[0]] for p in points]) 
             
 
-    def get_2D_slice(self, model_ids: list, fixed_values: list): #NJ DELETE THIS FUNCTION
+    def get_2D_slice(self, model_ids: list[str], fixed_values: list): #NJ DELETE THIS FUNCTION
         if self.size - len(model_ids) != 2:
             raise RuntimeError("Two members with non-fixed values required! No more, no less.")
         
@@ -148,7 +150,6 @@ class EcosystemGrid():
         return [slice_indexes, free_member_indexes]    
     
 
-    # used by ecosystem_plot
     def _get_closest_grid_value(self, model_id, fixed_value):
         member_index = self.member_model_ids.index(model_id)
         member_min = self.limits[0][member_index]
@@ -219,13 +220,15 @@ class EcosystemGrid():
         return cgrowth     
 
 
+    """
+
     def get_polytope_vertex(self, expand: bool = True):
   
-        """
+        """"""
         polytope: pareto front + axes segments + extra segments perpendicular to axes dimensions where 
         pareto solutions don't reach 0 values. 
         (assumption: objective functions can only take positive values)
-        """
+        """"""
         pareto_front = self.ecosystem.community._get_pareto_front()
 
         #2. origin
@@ -273,5 +276,5 @@ class EcosystemGrid():
 
         return polytope_vertex 
     
-
+    """
     
