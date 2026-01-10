@@ -6,7 +6,7 @@ from ecosystem.grid import EcosystemGrid
 from ecosystem.analyze import EcosystemAnalyze
 from ecosystem.plot import EcosystemPlot
 from ecosystem.clustering import EcosystemClustering
-
+from ecosystem.model_io import EcosystemIO
 
 class BaseEcosystem():
     """Abstract base class for ecosystem models
@@ -33,5 +33,6 @@ class BaseEcosystem():
         self.analyze = EcosystemAnalyze(self)
         self.plot = EcosystemPlot(self)
         self.clustering = EcosystemClustering(self)
+        self.io = EcosystemIO(self)
 
 

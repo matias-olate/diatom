@@ -24,8 +24,8 @@ CATEGORY_DICT = {
     -1.0: '-0',
     0.0: '0',
     1.0: '0+',
-    2.0: '++',
-    3.0: '+',
+    2.0: '+',
+    3.0: '++',
     4.0: '-+',
     5.0: 'err',
     100.0: 'var'
@@ -57,7 +57,7 @@ def qual_translate(fmin: np.ndarray, fmax: np.ndarray, delta: float = 1e-4) -> n
         neg_min & pos_max, 
     ]
 
-    choices = [-3.0, -2.0, -1.0, 0.0, 1.0, 3.0, 2.0, 4.0]
+    choices = [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0, 4.0]
 
     return np.select(conditions, choices, default=5.0)
 
@@ -176,7 +176,7 @@ class EcosystemAnalyze():
             self._feasibility_analysis(update_bounds=update_bounds, **kwargs)
             
         elif analysis == 'qual_fva':
-            self._qualitative_analysys(update_bounds=update_bounds, **kwargs)   
+            self._qualitative_analysis(update_bounds=update_bounds, **kwargs)   
 
         else:
             raise ValueError(f"Non valid analysis option: {analysis}") 
@@ -216,7 +216,7 @@ class EcosystemAnalyze():
         print(f"grid feasible points: {n_feasible}/{n_points}")
 
 
-    def _qualitative_analysys(self, update_bounds: bool = True, **kwargs) -> None:
+    def _qualitative_analysis(self, update_bounds: bool = True, **kwargs) -> None:
         """Run qualitative FVA analysis for all (or feasible) grid points.
 
         Generates qualitative vectors and FVA results for each grid point and stores them
@@ -245,7 +245,8 @@ class EcosystemAnalyze():
             
         qual_vector_list, fva_results = map(list, zip(*fva_tuples))    
         self.qual_vector_df = pd.DataFrame(np.array(qual_vector_list), columns=self.fva_reactions, index=df_index)
-            
+        self.ecosystem.io.save_qual_df()    
+
         fva_results = np.dstack(fva_results)
         fva_results = np.rollaxis(fva_results, -1)
             
@@ -292,7 +293,7 @@ class EcosystemAnalyze():
 
 
     def _analyze_point(self, grid_point: np.ndarray, member_fractions: np.ndarray | None, 
-                       analysis: str = 'feasibility', update_bounds: bool = False, delta: float = 1e-9) -> bool | tuple:
+                       analysis: Literal["feasibility", "qual_fva"] = 'feasibility', update_bounds: bool = False, delta: float = 1e-9) -> bool | tuple:
         """Analyze a single grid point of the ecosystem parameter space.
 
         This method evaluates either the feasibility of a grid point or computes
@@ -336,12 +337,16 @@ class EcosystemAnalyze():
         `with community_model:` context manager. This guarantees that all changes are reverted after the 
         analysis is completed.
         """
+        loaded_point = self.ecosystem.io.load_point(grid_point, analysis)
+        if loaded_point is not None:
+            return loaded_point
+
         community_model = self.ecosystem.community_model
 
         #print(f"point: {grid_point}")
         fraction, mu_total = grid_point
         member_mu = np.array([fraction*mu_total, (1-fraction)*mu_total]) 
-
+        
         with community_model:
             # update member reactions bounds if required:
             if update_bounds: 
@@ -360,11 +365,10 @@ class EcosystemAnalyze():
                 # slim_optimize returns `error_value` if the model has no feasible solution.
                 max_value = community_model.slim_optimize(error_value = INFEASIBLE)  
 
-                if max_value != INFEASIBLE:
-                    return True
+                is_feasible = max_value != INFEASIBLE
+                self.ecosystem.io.save_feasible_point(grid_point, is_feasible, update_bounds)
                 
-                #print('unfeasible point')
-                return False
+                return is_feasible
             
 
             elif analysis == 'qual_fva':  # here we assume the point is feasible      
@@ -383,7 +387,10 @@ class EcosystemAnalyze():
                 qualitative_vector = qual_translate(minimum_values, maximum_values, delta=delta)
                 fva_results = rxn_fva.values
 
-                return list(qualitative_vector), fva_results
+                fva_tuple = (list(qualitative_vector), fva_results)
+                self.ecosystem.io.save_fva_result(grid_point, fva_tuple, update_bounds)
+
+                return fva_tuple
 
 
             else:

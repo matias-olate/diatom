@@ -27,8 +27,26 @@ class EcosystemClustering():
         return self.ecosystem.analyze.qual_vector_df
 
 
+    def _filter_changing_reactions(self, changing: bool = True) -> np.ndarray:
+        z = self.qual_vector_df.copy()
+        print("test filtering")
+        if not changing:
+            return z.values
+        
+        #self.changed_rxns = None
+        changed_rxns = self.qual_vector_df.max(axis=0) != self.qual_vector_df.min(axis=0)
+        changed_rxns_ids = z.columns[changed_rxns]
+        z = z[changed_rxns_ids]
+        #self.changed_rxns = changed_rxns_ids
+        print(self.qual_vector_df.values.shape, changed_rxns.sum())
+
+        z_one_hot = pd.get_dummies(z.astype(str))
+        print(f"Original: {z.shape} -> Expandido (One-Hot): {z_one_hot.shape}")
+        return z_one_hot.values
+        
+
     # NO SE USA EN NINGUN MODULO
-    def set_reaction_clusters(self, method, changing= True, **kwargs) -> None:
+    def set_reaction_clusters(self, method, changing: bool = True, **kwargs) -> None:
         """Cluster reactions based on their qualitative FVA profiles across grid points.
 
         Optionally restricts clustering to reactions whose qualitative state changes
@@ -37,23 +55,15 @@ class EcosystemClustering():
         if self.qual_vector_df is None:
             print("No qualitative FVA values stored. Run qual_fva analysis first!")
             return
-
-        z = self.qual_vector_df.copy()
-        self.changed_rxns = None
-        if changing: # clustering considering changing reactions only:
-            changed_rxns = self.qual_vector_df.max(axis=0) != self.qual_vector_df.min(axis=0)
-            changed_rxns_ids = z.columns[changed_rxns]
-            z = z[changed_rxns_ids]
-            self.changed_rxns = changed_rxns_ids
-            
-        z = z.values
+        
+        z = self._filter_changing_reactions(changing)
         z = z.T
 
         print(f"Clustering {z.shape[0]} reactions ...") 
         self.reaction_n_clusters, self.reaction_clusters = self._map_clusters(method, z, **kwargs)
 
  
-    def set_grid_clusters(self, method: str, vector: str = 'qual_vector', **kwargs) -> None:
+    def set_grid_clusters(self, method: str, changing: bool = True, vector: str = 'qual_vector', **kwargs) -> None:
         """Cluster grid points based on qualitative or binary flux vectors.
 
         Uses pairwise Jaccard distances between grid points and stores the resulting
@@ -63,9 +73,12 @@ class EcosystemClustering():
             print("No qualitative FVA values stored. Run qual_fva analysis first!")
             return
 
+        print("debug")
+        self.qual_vector_df.head(100)
+        print(self.qual_vector_df.values)
         #NJT to use qual_vector as well as bin_vector if required
         if vector == 'qual_vector':
-            qualitative_vector = self.qual_vector_df.values 
+            qualitative_vector = self._filter_changing_reactions(changing)
         elif vector == 'bin_vector' and self.bin_vector_df is not None:
             qualitative_vector = self.bin_vector_df.values
         else:
@@ -84,7 +97,10 @@ class EcosystemClustering():
         distance_metric = 'jaccard'
         dvector = distance.pdist(qualitative_vector, distance_metric) 
         dmatrix = distance.squareform(dvector)     
-        
+
+        np.set_printoptions(threshold=10**12)
+        print(f"jaccard:")
+        print(dvector)
         # Clustering methods
         # hierarchical + fcluster
         # dbscan (eps,min_samples)
@@ -225,12 +241,20 @@ class EcosystemClustering():
     
 
 # ======================================================= CLUSTER FUNCTIONS =======================================================
-
+import matplotlib.pyplot as plt
 
 def get_hierarchical_clusters(dvector: np.ndarray, k: int = 20, lmethod: str = 'ward', 
                             criterion: str= 'maxclust', **kwards) -> tuple[int, np.ndarray]:
     row_linkage = hierarchy.linkage(dvector, method=lmethod)
-    clusters = fcluster(row_linkage, k, criterion=criterion)
+
+    plt.figure(figsize=(12, 6))
+    hierarchy.dendrogram(row_linkage)
+    plt.title("Hierarchical clustering dendrogram (Jaccard)")
+    plt.xlabel("Points")
+    plt.ylabel("Jaccard distance")
+    plt.show()
+
+    clusters = fcluster(row_linkage, t=k, criterion=criterion)
 
     k = len(np.unique(clusters))
 

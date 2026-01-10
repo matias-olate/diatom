@@ -18,6 +18,8 @@ class EcosystemGrid():
         self.feasible_points: NDArray[np.bool] = np.array([])
         self.member_fractions: NDArray[np.floating] = np.array([])
 
+        self.grid_dimensions: NDArray[np.floating] = np.array([0,0])
+        self.points_per_axis: int = 0
         self.step: int = 0
         self.limits: tuple[NDArray, NDArray] = (np.array([]),np.array([]))
         
@@ -71,6 +73,7 @@ class EcosystemGrid():
 
         mins = np.array([0.0, 0.0]) 
         maxs = np.array([1.0, max_objective_value])
+        self.grid_dimensions = maxs
         print(f'Maximum community: {max_objective_value}')
         
         # builds 1D slices
@@ -87,6 +90,7 @@ class EcosystemGrid():
             maxs = np.asarray(np.max(grid_points, axis=0))
         
         self.points = grid_points
+        self.points_per_axis = numPoints
         self.limits = (mins, maxs)
 
 
