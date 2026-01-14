@@ -32,6 +32,7 @@ from sklearn.cluster import DBSCAN, OPTICS,SpectralClustering, AffinityPropagati
 
 from scipy.cluster.hierarchy import fcluster
 from scipy.cluster import hierarchy
+import os
 
 class Ecosystem:
 
@@ -41,8 +42,8 @@ class Ecosystem:
         
         pickle_filename = "%s.p" % model_prefix
         cobra_model_filename = "%s.json" %model_prefix
-
-        data_dict = pickle.load( open(file_dir+pickle_filename, "rb" ) )
+        directory = os.path.join(file_dir, pickle_filename)
+        data_dict = pickle.load(open(directory, "rb" ) )
         
         self.points = data_dict['points']
         self.objectives = data_dict['objectives']
@@ -1443,7 +1444,7 @@ class Ecosystem:
         print("Done!")         
 
 
-    def getHIERARCHICALclusters(dvector,k=20,lmethod='ward',criterion='maxclust', **kwards):
+    def getHIERARCHICALclusters(dvector, k=20, lmethod='ward',criterion='maxclust', **kwards):
         row_linkage = hierarchy.linkage(dvector, method=lmethod)
         clusters = fcluster(row_linkage, k, criterion=criterion)
         return k, clusters
