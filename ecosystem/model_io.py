@@ -1,22 +1,27 @@
+from typing import TYPE_CHECKING, cast, Literal
+import pickle
 from pathlib import Path
+
+
 from cobra import Model
 import cobra.io
 import numpy as np
-from typing import TYPE_CHECKING, cast, Literal
-import pickle
+
 
 if TYPE_CHECKING:
     from ecosystem.base import BaseEcosystem
+    from diatom.diatom import Diatom
 
 
 MODEL_DIR = "models"
 SAVE_POINTS_DIR = "models/points"
 
 
-def load_model(model_name: str, model_directory: str = MODEL_DIR, solver: str = 'gurobi') -> Model:
+def load_model(model_name: str, model_directory: str = MODEL_DIR, solver: str = 'gurobi', **kwargs) -> Model:
     '''Loads a COBRA model from an SBML file using the specified solver.'''
     path = Path(model_directory) / model_name
-    model = cobra.io.read_sbml_model(path, solver=solver)
+    model = cobra.io.read_sbml_model(path, solver=solver, **kwargs)
+    model.solver.configuration.threads = 0
 
     return model 
 
@@ -32,20 +37,21 @@ def save_models(model_dict: dict[str, Model], model_directory: str = MODEL_DIR) 
         print(f'model {model_name} stored')
 
 
-class EcosystemIO():
-    def __init__(self, base_ecosystem: "BaseEcosystem"):
-        self.ecosystem = base_ecosystem
+class ModelIO():
+    def __init__(self, modelclass: "BaseEcosystem | Diatom", model_name: str):
+        self.modelclass = modelclass
         self.directory: Path | None = None
+        self.model_name: str = model_name
 
     
     @property
     def grid_dimensions(self) -> np.ndarray:
-        return self.ecosystem.grid.grid_dimensions
+        return self.modelclass.grid.grid_dimensions
     
 
     @property
-    def points_per_axis(self) -> int:
-        return self.ecosystem.grid.points_per_axis
+    def points_per_axis(self) -> tuple[int, int]:
+        return self.modelclass.grid.points_per_axis
     
 
     def coordinates_to_index(self, grid_point: np.ndarray) -> tuple[int, int]:
@@ -53,14 +59,14 @@ class EcosystemIO():
         assert Lx > 0 and Ly > 0
 
         x, y = grid_point
-        i = round((self.points_per_axis-1) / Lx * x)
-        j = round((self.points_per_axis-1) / Ly * y)
+        i = round((self.points_per_axis[0]-1) / Lx * x)
+        j = round((self.points_per_axis[1]-1) / Ly * y)
 
         return i, j
     
 
     def get_directory(self, grid_point: np.ndarray, analysis: Literal["feasibility", "qual_fva"]) -> Path:
-        model_name = cast(str, self.ecosystem.community_model.name)
+        model_name = self.model_name
         
         Lx, Ly = self.grid_dimensions
         grid_dim = f"Lx_{Lx:.4f}_Ly_{Ly:.4f}"
@@ -97,7 +103,7 @@ class EcosystemIO():
             return loaded_data["fva_tuple"]
         
 
-    def save_feasible_point(self, grid_point: np.ndarray, is_feasible: bool, update_bounds: bool) -> None:
+    def save_feasible_point(self, grid_point: np.ndarray, is_feasible: bool, update_bounds: bool = True) -> None:
         point_dict = {
             "is_feasible": is_feasible,
             "update_bounds": update_bounds,
@@ -110,10 +116,10 @@ class EcosystemIO():
             pickle.dump(point_dict, f)
 
 
-    def save_fva_result(self, grid_point: np.ndarray, fva_tuple: tuple, update_bounds: bool) -> None:
+    def save_fva_result(self, grid_point: np.ndarray, fva_tuple: tuple, update_bounds: bool = True) -> None:
         point_dict = {
             "fva_tuple": fva_tuple,
-            "update_bounds": update_bounds,
+            "update_bounds": update_bounds
         }
         
         # making the directory to store the point
@@ -128,4 +134,4 @@ class EcosystemIO():
             raise Exception()
 
         path = self.directory / "qual_fva" / "qual_vector.json"
-        self.ecosystem.analyze.qual_vector_df.to_json(path, orient="records", indent=2)
+        self.modelclass.analyze.qual_vector_df.to_json(path, orient="records", indent=2)

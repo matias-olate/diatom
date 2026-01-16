@@ -1,10 +1,9 @@
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING
 from functools import reduce
 
 import numpy as np
 from numpy.typing import NDArray
 
-from cobra import Model
 
 if TYPE_CHECKING:
     from ecosystem.base import BaseEcosystem
@@ -19,7 +18,7 @@ class EcosystemGrid():
         self.member_fractions: NDArray[np.floating] = np.array([])
 
         self.grid_dimensions: NDArray[np.floating] = np.array([0,0])
-        self.points_per_axis: int = 0
+        self.points_per_axis: tuple[int, int] = (0,0)
         self.step: int = 0
         self.limits: tuple[NDArray, NDArray] = (np.array([]),np.array([]))
         
@@ -90,7 +89,7 @@ class EcosystemGrid():
             maxs = np.asarray(np.max(grid_points, axis=0))
         
         self.points = grid_points
-        self.points_per_axis = numPoints
+        self.points_per_axis = (numPoints, numPoints)
         self.limits = (mins, maxs)
 
 

@@ -4,6 +4,7 @@ from typing import cast
 Numerical = int | float
 
 
+
 def clone_with_modified_bounds(model: Model, bounds_dict: dict[str, tuple[int, int]]) -> Model:
     '''Returns a copy of the given COBRA model with reaction bounds updated. The reactions specified in "bounds_dict" are replaced by the provided (lower, upper) tuples.
     The original model is not modified.'''
