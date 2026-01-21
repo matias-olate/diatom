@@ -67,7 +67,7 @@ class DiatomGrid():
         return np.asarray(points, dtype=float)
 
 
-    def sample_polytope(self, delta: float = 0.1, eps = 1e-9) -> None:
+    def sample_polytope(self, delta: float = 0.1, eps = 1e-8) -> None:
         poly = self.diatom.analyze.polytope
         prepared_poly = prep(poly.buffer(eps))
 

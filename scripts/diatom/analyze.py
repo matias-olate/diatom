@@ -132,7 +132,8 @@ class DiatomAnalyze():
 
         fva_results = np.dstack(fva_results)
         fva_results = np.rollaxis(fva_results, -1)
-            
+        
+        print("Done!\n")
         self.fva_results = fva_results 
 
 

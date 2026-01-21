@@ -2,13 +2,11 @@ from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import pandas as pd
-import matplotlib.ticker as mtick
 
 from scipy.spatial import distance
 from scipy.cluster.hierarchy import fcluster
 from scipy.cluster import hierarchy
 from sklearn.cluster import DBSCAN, OPTICS, SpectralClustering, AffinityPropagation
-
 
 if TYPE_CHECKING:
     from ecosystem.base import BaseEcosystem
@@ -31,7 +29,7 @@ class ModelClustering():
 
     def _filter_changing_reactions(self, changing: bool = True) -> np.ndarray:
         z = self.qual_vector_df.copy()
-        print("test filtering")
+
         if not changing:
             return z.values
         
@@ -40,10 +38,10 @@ class ModelClustering():
         changed_rxns_ids = z.columns[changed_rxns]
         z = z[changed_rxns_ids]
         #self.changed_rxns = changed_rxns_ids
-        print(f"changing reaction: {self.qual_vector_df.values.shape} -> {changed_rxns.sum()}")
+        #print(f"changing reaction: {self.qual_vector_df.values.shape} -> {changed_rxns.sum()}")
 
         z_one_hot = pd.get_dummies(z.astype(str))
-        print(f"Original: {z.shape} -> Expandido (One-Hot): {z_one_hot.shape}")
+        print(f"base: {z.shape} -> one-hot: {z_one_hot.shape}")
         return z_one_hot.values
         
 
@@ -75,9 +73,6 @@ class ModelClustering():
             print("No qualitative FVA values stored. Run qual_fva analysis first!")
             return
 
-        print("debug")
-        self.qual_vector_df.head(100)
-        print(self.qual_vector_df.values)
         #NJT to use qual_vector as well as bin_vector if required
         if vector == 'qual_vector':
             qualitative_vector = self._filter_changing_reactions(changing)
@@ -100,9 +95,6 @@ class ModelClustering():
         dvector = distance.pdist(qualitative_vector, distance_metric) 
         dmatrix = distance.squareform(dvector)     
 
-        np.set_printoptions(threshold=10**12)
-        print(f"jaccard:")
-        print(dvector)
         # Clustering methods
         # hierarchical + fcluster
         # dbscan (eps,min_samples)
@@ -123,8 +115,7 @@ class ModelClustering():
         else:
             raise ValueError(f"Unknown method: {method}")
         
-
-        print(f"Done! n_clusters: {n_clusters}, clusters: {clusters}")    
+        print(f"Done! n_clusters: {n_clusters}")    
         
         return n_clusters, clusters
 
@@ -208,40 +199,6 @@ class ModelClustering():
         return comparative_df
     
 
-    def plot_cluster_distribution(self, clusters_df: pd.DataFrame, cmap: str = 'Accent', figsize: tuple[int, int] = (10,5)) -> pd.DataFrame:
-        """Plot the distribution of qualitative reaction categories per cluster.
-
-        Each column in `clusters_df` is interpreted as a cluster and each row as a
-        reaction category assignment. NaN values are treated as an additional
-        'variable' category. Outputs a dataframe contaning the percentage of reactions per category for each cluster.
-        """
-        cluster_columns = list(clusters_df)
-        n_reactions = clusters_df.shape[0]
-
-        nan_rep = 100.0 # Change nan to additional category 'variable'
-        filled_clusters_df = clusters_df.fillna(nan_rep)
-
-        category_percents_dict = dict()
-
-        for category in cluster_columns:
-            vc = filled_clusters_df[category].value_counts()
-            vc = 100 * vc/n_reactions # to percentages
-            category_percents_dict[category] = vc.to_dict()   
-            
-        category_percents = pd.DataFrame.from_dict(category_percents_dict, orient='index')
-        category_percents.fillna(0, inplace=True)
-        category_percents.rename(columns = self.modelclass.analyze.category_dict, inplace=True)
-
-        # plot
-        ax = category_percents.plot.barh(stacked=True, cmap=cmap, figsize=figsize)
-        ax.legend(loc='center left', bbox_to_anchor=(1.0, 0.5), title='reaction category')
-        ax.xaxis.set_major_formatter(mtick.PercentFormatter())
-        ax.set_ylabel('clusters')
-        ax.set_xlabel('reactions')
-
-        return category_percents 
-    
-
 # ======================================================= CLUSTER FUNCTIONS =======================================================
 import matplotlib.pyplot as plt
 
@@ -249,12 +206,12 @@ def get_hierarchical_clusters(dvector: np.ndarray, k: int = 20, lmethod: str = '
                             criterion: str= 'maxclust', **kwards) -> tuple[int, np.ndarray]:
     row_linkage = hierarchy.linkage(dvector, method=lmethod)
 
-    plt.figure(figsize=(12, 6))
-    hierarchy.dendrogram(row_linkage)
-    plt.title("Hierarchical clustering dendrogram (Jaccard)")
-    plt.xlabel("Points")
-    plt.ylabel("Jaccard distance")
-    plt.show()
+    #plt.figure(figsize=(12, 6))
+    #hierarchy.dendrogram(row_linkage)
+    #plt.title("Hierarchical clustering dendrogram (Jaccard)")
+    #plt.xlabel("Points")
+    #plt.ylabel("Jaccard distance")
+    #plt.show()
 
     clusters = fcluster(row_linkage, t=k, criterion=criterion)
 
