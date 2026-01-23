@@ -20,7 +20,7 @@ def analyze_reactions(reaction_list1: list[str], reaction_list2: list[str], n_an
             polytope_pipeline((reaction1, reaction2), n_angles = n_angles, delta = delta)
 
 
-reactions1 = ["EX_no3_e", "EX_photon_e"]
+reactions1 = ["EX_co2_e"]
 reactions2 = ["DM_biomass_c"]
 
 analyze_reactions(reactions1, reactions2)

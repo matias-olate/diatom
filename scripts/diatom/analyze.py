@@ -101,7 +101,10 @@ class DiatomAnalyze():
         self.analyzed_reactions = reaction_tuple
 
 
-    def qualitative_analysis(self, **kwargs) -> None:
+    def qualitative_analysis(self, 
+                             x_limits: tuple[float, float] = (-np.inf, np.inf), 
+                             y_limits: tuple[float, float] = (-np.inf, np.inf), 
+                             **kwargs) -> None:
         """Run qualitative FVA analysis for all (or feasible) grid points.
 
         Generates qualitative vectors and FVA results for each grid point and stores them
@@ -121,8 +124,11 @@ class DiatomAnalyze():
             df_index = np.arange(points.shape[0])
         else:
             print("Running qualitative fva over grid feasible points...")
-            points = points[feasible_points, :]    
-            df_index = np.where(feasible_points)[0]
+            filtered = (points[:, 0] > x_limits[0]) & (points[:, 0] < x_limits[1]) & (points[:, 1] > y_limits[0]) & (points[:, 1] < y_limits[1])
+            analyzed_points = filtered & feasible_points
+
+            points = points[analyzed_points, :]    
+            df_index = np.where(analyzed_points)[0]
         
         fva_tuples = self._calculate_qual_vectors(points, **kwargs)
             
