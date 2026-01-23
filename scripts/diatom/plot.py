@@ -28,9 +28,9 @@ class DiatomPlot():
 
         poly = analyze.polytope
         points = grid.points
-        feasible = grid.feasible_points
+        analyzed = grid.analyzed_points
         
-        points = points[feasible]
+        points = points[analyzed]
 
         fig, ax = plt.subplots(figsize=(7, 7))
 
@@ -56,10 +56,13 @@ class DiatomPlot():
         reactions = analyze.analyzed_reactions
         ax.set_xlabel(reactions[0])
         ax.set_ylabel(reactions[1])
-        ax.set_title("Projected Feasible Polytope")
+        ax.set_title("Projected Analyzed Polytope")
         ax.grid(True)
 
+        reaction1, reaction2 = analyze.analyzed_reactions
+
         plt.tight_layout()
+        plt.savefig(f"plots/{reaction1}_{reaction2}_NC{self.diatom.clustering.grid_n_clusters}_Delta{self.diatom.grid.delta}.png")
         plt.show()
 
 

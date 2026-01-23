@@ -68,6 +68,8 @@ class DiatomAnalyze():
 
         self.qual_vector_df: pd.DataFrame        = pd.DataFrame()    # public
         self.category_dict: dict[float, str]     = CATEGORY_DICT
+        self._empty_qual_vector: list[float] | None = None
+        self._empty_fva_result: np.ndarray | None = None
 
 
     def _solve_lp_direction(self, reaction_tuple: tuple[str, str], theta: float) -> tuple[float, float]:
@@ -103,7 +105,8 @@ class DiatomAnalyze():
 
     def qualitative_analysis(self, 
                              x_limits: tuple[float, float] = (-np.inf, np.inf), 
-                             y_limits: tuple[float, float] = (-np.inf, np.inf), 
+                             y_limits: tuple[float, float] = (-np.inf, np.inf),
+                             only_load: bool = False, 
                              **kwargs) -> None:
         """Run qualitative FVA analysis for all (or feasible) grid points.
 
@@ -129,8 +132,10 @@ class DiatomAnalyze():
 
             points = points[analyzed_points, :]    
             df_index = np.where(analyzed_points)[0]
+
+            self.diatom.grid.analyzed_points = analyzed_points
         
-        fva_tuples = self._calculate_qual_vectors(points, **kwargs)
+        fva_tuples = self._calculate_qual_vectors(points, only_load = only_load, **kwargs)
             
         qual_vector_list, fva_results = map(list, zip(*fva_tuples))    
         self.qual_vector_df = pd.DataFrame(np.array(qual_vector_list), columns=self.fva_reactions, index=df_index)
@@ -143,7 +148,7 @@ class DiatomAnalyze():
         self.fva_results = fva_results 
 
 
-    def _calculate_qual_vectors(self, grid_points: np.ndarray, **kwargs) -> list[tuple]:
+    def _calculate_qual_vectors(self, grid_points: np.ndarray, only_load: bool, **kwargs) -> list[tuple]:
         """Calculate qualitative FVA vectors for a set of grid points.
 
         Iterates over grid points and calculates qualitative FVA vectors using. Each element in the returned 
@@ -162,13 +167,35 @@ class DiatomAnalyze():
         n_points = grid_points.shape[0]
 
         print("Analyzing point feasibility....")
-        fva_tuples = [self._analyze_point(grid_point, **kwargs) 
+        if only_load:
+            fva_tuples = []
+            for grid_point in tqdm(grid_points, total=n_points):
+                loaded = self._load_if_stored(grid_point)
+                if loaded is not None:
+                    fva_tuples.append(loaded)
+        else:
+            fva_tuples = [self._analyze_point(grid_point, **kwargs) 
                       for grid_point in tqdm(grid_points, total = n_points)] 
 
         return fva_tuples
     
     
-    def _analyze_point(self, grid_point: np.ndarray, delta: float = 1e-9) -> tuple:
+    def _load_if_stored(self, grid_point: np.ndarray):
+        loaded = self.diatom.io.load_point(grid_point, "qual_fva")
+
+        if isinstance(loaded, tuple):
+            return loaded
+
+        # --- fallback: placeholder ---
+        if self._empty_qual_vector is None or self._empty_fva_result is None:
+            n_rxns = len(self.fva_reactions)
+            self._empty_qual_vector = [np.nan] * n_rxns
+            self._empty_fva_result = np.full((n_rxns, 2), np.nan)
+
+        return (self._empty_qual_vector, self._empty_fva_result)
+
+
+    def _analyze_point(self, grid_point: np.ndarray, delta: float = 1e-9, **kwargs) -> tuple:
         """Analyze a single grid point of the ecosystem parameter space.
 
         This method evaluates either the feasibility of a grid point or computes

@@ -17,8 +17,10 @@ class DiatomGrid():
         self.diatom = diatom
         self.points: NDArray[np.floating] = np.array([]) # shape: (numPoints**2, 2)
         self.feasible_points: NDArray[np.bool] = np.array([])
+        self.analyzed_points: NDArray[np.bool] = np.array([])
         self.grid_dimensions: NDArray[np.floating] = np.array([0,0])
         self.points_per_axis: tuple[int, int] = (0,0)
+        self.delta: float = 0.0
 
 
     def _build_grid(self, delta: float = 0.1) -> tuple[NDArray[np.floating], BaseGeometry]:
@@ -30,6 +32,7 @@ class DiatomGrid():
         self.grid_dimensions = np.array([interval_x, interval_y])
 
         dx, dy = delta * interval_x, delta * interval_y
+        self.delta = delta
 
         xs = np.arange(minx, maxx + dx, dx)
         ys = np.arange(miny, maxy + dy, dy)

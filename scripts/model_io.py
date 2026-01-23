@@ -70,7 +70,8 @@ class ModelIO():
         model_name = self.model_name
         
         Lx, Ly = self.grid_dimensions
-        grid_dim = f"Lx_{Lx:.4f}_Ly_{Ly:.4f}"
+        reaction1, reaction2 = self.modelclass.analyze.analyzed_reactions
+        grid_dim = f"Lx_{Lx:.4f}_Ly_{Ly:.4f}_{reaction1}_{reaction2}"
 
         filename = f"{analysis}_{self.coordinates_to_filename(grid_point)}"
 
