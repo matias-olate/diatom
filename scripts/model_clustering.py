@@ -128,7 +128,7 @@ class ModelClustering():
         total = len(cluster_column)
 
         qualitative_values, counts = np.unique(cluster_column, return_counts=True)
-        print(f'thresholds: {counts/total}, qualitative_values: {qualitative_values, counts, total}')
+        #print(f'thresholds: {counts/total}, qualitative_values: {qualitative_values, counts, total}')
         representative = qualitative_values[counts/total >= threshold]
          
         if representative.size > 0:
