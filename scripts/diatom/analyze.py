@@ -1,13 +1,13 @@
-from typing import TYPE_CHECKING, cast, overload, Literal
+from typing import TYPE_CHECKING, cast
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-
+from cobra import Reaction
 from cobra.flux_analysis import flux_variability_analysis
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
-
 
 if TYPE_CHECKING:
     from .diatom import Diatom
@@ -70,6 +70,8 @@ class DiatomAnalyze():
         self.category_dict: dict[float, str]     = CATEGORY_DICT
         self._empty_qual_vector: list[float] | None = None
         self._empty_fva_result: np.ndarray | None = None
+
+        self.qFCA: pd.DataFrame = pd.DataFrame()
 
 
     def _solve_lp_direction(self, reaction_tuple: tuple[str, str], theta: float) -> tuple[float, float]:
@@ -262,4 +264,64 @@ class DiatomAnalyze():
 
             return fva_tuple
 
+
+    # ================================================== QUANTITATIVE GRID ANALYSIS ==================================================
+
+    PointList = list[float | int] | list[int] | list[float]
+    def quan_FCA(self, grid_x: PointList, grid_y: PointList, reaction_ids: tuple[str, str]) -> None:
+        """Performs quantitative Flux Coupling Analysis on two reactions (rxns_analysis) on points of a sub-grid defined by points grid_x, grid_y.
+        
+        Stores an attribute self.qFCA containing a dataframe with the following columns: 
+            flux_rxns_analysis[0], flux_rxn_analysis[1], FVA (str: minimum or maximum), point (coordinates of point)
+        """
+        assert len(reaction_ids) == 2
+
+        feasible_points = self.diatom.grid.points[self.diatom.grid.feasible_points]
+        reaction_id_0 = reaction_ids[0]
+        reaction_id_1 = reaction_ids[1]
+
+        print('Quantitative Flux Coupling analysis \n Initializing grid...')
+
+        analyze_points = []
+        # Match points defined by the user in grid_x, grid_y to specific points on the grid
+        for y in grid_y:
+            for x in grid_x:
+                search_point = np.array([x, y])
+                distances = np.linalg.norm(feasible_points-search_point, axis=1)
+                min_index = np.argmin(distances)
+                analyze_points.append(min_index)
+                #print(f"The closest point to {search_point} is {feasible_points[min_index]}, at a distance of {distances[min_index]}")
+
+        qFCA_data = []
+
+        for point in analyze_points:
+            grid_point = feasible_points[point]
+            
+            #print(f'Selected point: {grid_point}')
+
+            with self.diatom.model as model:
+                # update bounds nad objectives
+                self.diatom.fix_growth_rates(model, grid_point)
+
+                # define limit reactions based on theoretical max-min defined from model
+                fva_result = flux_variability_analysis(model, reaction_list = [reaction_id_0])
+                min_value = float(fva_result['minimum'].iloc[0])
+                max_value = float(fva_result['maximum'].iloc[0])
+                values_rxn_ref = np.linspace(min_value, max_value, num=50)
+
+                reaction_0 = cast(Reaction, model.reactions.get_by_id(reaction_id_0))
+                
+                for value in values_rxn_ref:
+                    reaction_0.bounds = (value, value)
+                    fva_result = flux_variability_analysis(model, reaction_list = [reaction_id_1])
+                    
+                    for bound in fva_result: # [minimum, maximum]
+                        qFCA_data.append({
+                            reaction_id_0: value,
+                            reaction_id_1: fva_result[bound].iloc[0],
+                            'FVA': bound,
+                            'point': f"{grid_point[0]:.3f}, {grid_point[1]:.3f}"
+                        })
+
+        self.qFCA = pd.DataFrame(qFCA_data)
 

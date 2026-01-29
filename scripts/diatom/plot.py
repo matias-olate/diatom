@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
+import seaborn as sns
 
 from shapely.geometry import Polygon
 from shapely.geometry.base import BaseGeometry
@@ -100,3 +101,28 @@ class DiatomPlot():
         return category_percents 
 
 
+    def plot_qFCA(self, col_wrap = 4):
+        #Plots results computed by quan_FCA
+        #input: maxmin_df (output of quan_FCA)
+        #output: plot
+        maxmin_df = self.diatom.analyze.qFCA
+
+        sns.set(font_scale = 2)
+        rxns_analysis = maxmin_df.columns[0:2]
+        sns.set_style("whitegrid")
+
+        g=sns.relplot(data = maxmin_df, x=rxns_analysis[0], y=rxns_analysis[1], col = 'point', hue='FVA', kind='line', col_wrap=4, lw=0)
+        points = maxmin_df.point.unique()
+        for i,ax in enumerate(g._axes):
+            p = points[i]
+
+            p_df = maxmin_df.loc[maxmin_df['point']==p]
+            x = p_df.loc[p_df['FVA']=='maximum'][rxns_analysis[0]].to_numpy()
+
+            y1 = p_df.loc[p_df['FVA']=='maximum']
+            y1 = y1[rxns_analysis[1]].to_numpy()
+
+            y2 = p_df.loc[p_df['FVA']=='minimum']
+            y2 = y2[rxns_analysis[1]].to_numpy()
+
+            ax.fill_between(x, y1,y2, color='none',hatch='//', edgecolor="k", linewidth=0.001)
