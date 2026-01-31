@@ -18,8 +18,8 @@ class DiatomPlot():
         self.diatom = diatom
 
 
-    def plot_sampled_polytope(self, show_boundary: bool = True, show_points: bool = True,
-        s: float = 10.0, alpha: float = 0.6) -> None:
+    def sampled_polytope(self, show_boundary: bool = True, show_points: bool = True,
+        s: float = 12.0, alpha: float = 1.0) -> None:
         clusters = self.diatom.clustering.grid_clusters
         if clusters is None:
             raise RuntimeError("Grid clusters not computed.")
@@ -43,24 +43,23 @@ class DiatomPlot():
   
         # --- Puntos sampleados ---
         if show_points and points.size > 0:
-            k = int(np.max(clusters)) + 1
+            k = int(np.max(clusters))
             cmap = plt.get_cmap("tab20", k)
             vmin = 0.5
             vmax = k + 0.5
 
             sc = ax.scatter(points[:, 0], points[:, 1], c=clusters, s=s, alpha=alpha, 
                             cmap = cmap, vmin=vmin, vmax=vmax)
-            cbar = plt.colorbar(sc, ax=ax, ticks=np.arange(1, k + 1))
-            cbar.ax.set_yticklabels([f"C{i}" for i in range(k)])
+            cbar = plt.colorbar(sc, ax=ax, ticks=np.arange(1, k+1))
+            cbar.ax.set_yticklabels([f"C{i}" for i in range(1, k+1)])
             cbar.set_label("Cluster ID")
 
-        reactions = analyze.analyzed_reactions
-        ax.set_xlabel(reactions[0])
-        ax.set_ylabel(reactions[1])
-        ax.set_title("Projected Analyzed Polytope")
-        ax.grid(True)
-
         reaction1, reaction2 = analyze.analyzed_reactions
+
+        ax.set_xlabel(reaction1)
+        ax.set_ylabel(reaction2)
+        ax.set_title(f"Projected Feasible Polytope ({reaction1} - {reaction2})")
+        ax.grid(True)
 
         plt.tight_layout()
         plt.savefig(f"plots/{reaction1}_{reaction2}_NC{self.diatom.clustering.grid_n_clusters}_Delta{self.diatom.grid.delta}.png")

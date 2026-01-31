@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Callable
 
 import numpy as np
 import pandas as pd
@@ -6,7 +6,6 @@ import pandas as pd
 from scipy.spatial import distance
 from scipy.cluster.hierarchy import fcluster
 from scipy.cluster import hierarchy
-from sklearn.cluster import DBSCAN, OPTICS, SpectralClustering, AffinityPropagation
 
 if TYPE_CHECKING:
     from ecosystem.base import BaseEcosystem
@@ -95,23 +94,8 @@ class ModelClustering():
         dvector = distance.pdist(qualitative_vector, distance_metric) 
         dmatrix = distance.squareform(dvector)     
 
-        # Clustering methods
-        # hierarchical + fcluster
-        # dbscan (eps,min_samples)
-        # optics
-        # AffinityPropagation
-        # SpectralClustering 
-       
         if method == 'hierarchical':
             n_clusters, clusters = get_hierarchical_clusters(dvector,**kwargs)
-        elif method == 'dbscan':
-            n_clusters, clusters = get_DBSCAN_clusters(dmatrix,**kwargs)  
-        elif method == 'optics':
-            n_clusters, clusters = get_OPTICS_clusters(dmatrix,**kwargs)
-        elif method == 'SpectralClustering':
-            n_clusters, clusters = get_SC_clusters(dmatrix,**kwargs)          
-        elif method == 'AffinityPropagation':
-            n_clusters, clusters = get_AP_clusters(dmatrix, **kwargs)
         else:
             raise ValueError(f"Unknown method: {method}")
         
@@ -199,20 +183,41 @@ class ModelClustering():
         return comparative_df
     
 
+    def get_cluster_metrics(self, reaction_id: str) -> pd.DataFrame:
+        grid_clusters = self.grid_clusters
+        n_clusters = self.grid_n_clusters
+        assert grid_clusters is not None
+
+        fva_reactions = self.modelclass.analyze.fva_reactions
+        reaction_index = fva_reactions.index(reaction_id)
+        print(reaction_index)
+
+        fva_results = self.modelclass.analyze.fva_results
+        reaction_fva_results = (fva_results[:, reaction_index, :])
+        #print(reaction_fva_results.shape, "\n", reaction_fva_results)
+
+        metric_names = [metric.__name__ for metric in METRIC_LIST]
+
+        columns: dict[str, list[float]] = {}
+        for cluster_index in range(1, n_clusters+1):
+            filtered_results = reaction_fva_results[grid_clusters == cluster_index]
+            metric_results = [metric(filtered_results) for metric in METRIC_LIST]
+            columns[f"c{cluster_index}"] = metric_results
+
+        df = pd.DataFrame(columns, metric_names)
+
+        rxn1, rxn2 = self.modelclass.analyze.analyzed_reactions
+        df.to_csv(f"clusters/metrics/{reaction_id}_metrics_{rxn1}_{rxn2}_clusters.csv", index=True, encoding='utf-8')
+
+        return df
+    
+
 # ======================================================= CLUSTER FUNCTIONS =======================================================
-import matplotlib.pyplot as plt
+
 
 def get_hierarchical_clusters(dvector: np.ndarray, k: int = 20, lmethod: str = 'complete', 
                             criterion: str= 'maxclust', **kwards) -> tuple[int, np.ndarray]:
     row_linkage = hierarchy.linkage(dvector, method=lmethod)
-
-    #plt.figure(figsize=(12, 6))
-    #hierarchy.dendrogram(row_linkage)
-    #plt.title("Hierarchical clustering dendrogram (Jaccard)")
-    #plt.xlabel("Points")
-    #plt.ylabel("Jaccard distance")
-    #plt.show()
-
     clusters = fcluster(row_linkage, t=k, criterion=criterion)
 
     k = len(np.unique(clusters))
@@ -220,66 +225,75 @@ def get_hierarchical_clusters(dvector: np.ndarray, k: int = 20, lmethod: str = '
     return k, clusters # clusters are indexed from 1
 
 
-# retorna un vector de clusters 0-indexados
-def get_DBSCAN_clusters(dmatrix: np.ndarray, eps: float = 0.05, 
-                      min_samples: int = 5, **kwards) -> tuple[int, np.ndarray]: 
-    
-    # eps : 
-    # The maximum distance between two samples for one to be considered as in the neighborhood of the other. 
-    # This is not a maximum bound on the distances of points within a cluster. This is the most important 
-    # DBSCAN parameter to choose appropriately for your data set and distance function.
- 
-    # min_samples:
-    # The number of samples (or total weight) in a neighborhood for a point to be considered as a core point. 
-    # This includes the point itself.
-    
-    dbscan = DBSCAN(eps=eps, min_samples = min_samples, metric='precomputed', **kwards)
-    clusters = dbscan.fit_predict(dmatrix) # np.ndarray con las etiquetas de cada punto
-    
-    # output incluye outliers, valor -1 en vector clusters
-    k = len(np.unique(clusters))
-    
-    return k, clusters # clusters are indexed from 0, includes outliers as -1
-    
+# metrics
 
-def get_OPTICS_clusters(dmatrix: np.ndarray, max_eps: float = 0.05, 
-                      min_samples: int = 5, **kwards) -> tuple[int, np.ndarray]:
-    
-    optics = OPTICS(max_eps = max_eps, min_samples = min_samples,metric='precomputed')
-    clusters = optics.fit_predict(dmatrix)
-
-    # output incluye outliers, valor -1 en vector clusters
-    k = len(np.unique(clusters))
-
-    return k, clusters # clusters are indexed from 0, includes outliers as -1
+def minimum(x: np.ndarray) -> float:
+    return float(min(x[:, 0]))
 
 
-AssignLabels = Literal["kmeans", "discretize", "cluster_qr"]
+def maximum(x: np.ndarray) -> float:
+    return float(max(x[:, 1]))
 
 
-def get_SC_clusters(dmatrix: np.ndarray, assign_labels: AssignLabels = "discretize",
-                  random_state: int = 0, k: int = 20, delta: float = 0.2, 
-                  **kwards) -> tuple[int, np.ndarray]:
-    assert assign_labels in ['kmeans', 'discretize', 'cluster_qr']
-
-    #transformación de matriz de distancia a matriz de similitud. Vía aplicación de Gaussian (RBF, heat) kernel:
-    sim_matrix = np.exp(- dmatrix ** 2 / (2. * delta ** 2))
-    
-    sc = SpectralClustering(n_clusters = k, assign_labels = assign_labels, 
-                            random_state = random_state, affinity = 'precomputed', **kwards)
-    clusters = sc.fit_predict(sim_matrix)
-
-    return k, clusters # clusters are indexed from 0
+def mean_range(x: np.ndarray) -> float:
+    return float(np.mean(x[:, 1] - x[:, 0]))
 
 
-def get_AP_clusters(dmatrix: np.ndarray, **kwards) -> tuple[int, np.ndarray]:
-
-    af = AffinityPropagation(**kwards)
-    clusters = af.fit_predict(dmatrix) # np.ndarray
-
-    # output incluye outliers, valor -1 en vector clusters
-    k = len(np.unique(clusters))
-
-    return k, clusters # clusters are indexed from 0, includes outliers as -1
+def mean_midpoint(x: np.ndarray) -> float:
+    mid = 0.5 * (x[:, 0] + x[:, 1])
+    return float(np.mean(mid))
 
 
+def mean_relative_range(x: np.ndarray, eps: float = 1e-9) -> float:
+    r = x[:, 1] - x[:, 0]
+    cap = np.maximum(np.abs(x[:, 0]), np.abs(x[:, 1]))
+    return float(np.mean(r / (cap + eps)))
+
+
+def median_range(x: np.ndarray) -> float:
+    return float(np.median(x[:, 1] - x[:, 0]))
+
+
+def median_midpoint(x: np.ndarray) -> float:
+    mid = 0.5 * (x[:, 0] + x[:, 1])
+    return float(np.median(mid))
+
+
+def box_range(x: np.ndarray) -> float:
+    r = x[:, 1] - x[:, 0]
+    return float(np.percentile(r, 75) - np.percentile(r, 25))
+
+
+def frac_variable(x: np.ndarray, delta: float = 1e-9) -> float:
+    r = x[:, 1] - x[:, 0]
+    return float(np.mean(r > delta))
+
+
+def frac_zero_fixed(x: np.ndarray, delta: float = 1e-9) -> float:
+    return float(np.mean((np.abs(x[:, 0]) <= delta) & (np.abs(x[:, 1]) <= delta)))
+
+
+def frac_bidirectional(x: np.ndarray, delta: float = 1e-9) -> float:
+    return float(np.mean((x[:, 0] < -delta) & (x[:, 1] > delta)))
+
+
+def mean_abs_flux(x: np.ndarray) -> float:
+
+    cap = np.maximum(np.abs(x[:, 0]), np.abs(x[:, 1]))
+    return float(np.mean(cap))
+
+
+METRIC_LIST: list[Callable] = [
+    minimum,
+    maximum,
+    mean_range,
+    mean_midpoint,
+    mean_relative_range,
+    median_range,
+    median_midpoint,
+    box_range,
+    frac_variable,
+    frac_zero_fixed,
+    frac_bidirectional,
+    mean_abs_flux,
+]

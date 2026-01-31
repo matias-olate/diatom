@@ -63,10 +63,10 @@ class DiatomAnalyze():
         self.polytope: BaseGeometry = Polygon()
 
         self.analyzed_reactions: tuple[str, str] = ("","")
-        self.fva_reactions: list[str]            = []                # public
-        self.fva_results: np.ndarray             = np.array([])
+        self.fva_reactions: list[str]            = []                  
+        self.fva_results: np.ndarray             = np.empty((0, 0, 2)) # shape: (n_points, n_reactions, 2)
 
-        self.qual_vector_df: pd.DataFrame        = pd.DataFrame()    # public
+        self.qual_vector_df: pd.DataFrame        = pd.DataFrame()     
         self.category_dict: dict[float, str]     = CATEGORY_DICT
         self._empty_qual_vector: list[float] | None = None
         self._empty_fva_result: np.ndarray | None = None
@@ -176,8 +176,7 @@ class DiatomAnalyze():
                 if loaded is not None:
                     fva_tuples.append(loaded)
         else:
-            fva_tuples = [self._analyze_point(grid_point, **kwargs) 
-                      for grid_point in tqdm(grid_points, total = n_points)] 
+            fva_tuples = [self._analyze_point(grid_point, **kwargs) for grid_point in tqdm(grid_points, total = n_points)] 
 
         return fva_tuples
     
@@ -250,8 +249,7 @@ class DiatomAnalyze():
             #print(f"running FVA on grid point: {grid_point}")
                 
             rxn_fva = flux_variability_analysis(model, reaction_list=self.fva_reactions) # type: ignore              
-            rxn_fva = rxn_fva.loc[self.fva_reactions, :] # just to make sure reactions are in the 
-                                                         # same order as fva_reactions
+            rxn_fva = rxn_fva.loc[self.fva_reactions, :] # just to make sure reactions are in the same order as fva_reactions
             minimum_values = rxn_fva["minimum"].to_numpy()
             maximum_values = rxn_fva["maximum"].to_numpy()
 
