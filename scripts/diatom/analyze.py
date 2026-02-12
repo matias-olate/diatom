@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-
 from cobra import Reaction
 from cobra.flux_analysis import flux_variability_analysis
 from shapely.geometry import Polygon
@@ -25,12 +24,36 @@ CATEGORY_DICT = {
     5.0: 'err',
     100.0: 'var'
     }
+"""Mapping between numeric qualitative codes and symbolic labels.
+
+The numeric codes are produced by `qual_translate` and represent qualitative
+flux variability states derived from FVA minimum/maximum values.
+"""
 
 
 def qual_translate(fmin: np.ndarray, fmax: np.ndarray, delta: float = 1e-4) -> np.ndarray:
-    """
-    Translate FVA min/max values into qualitative states. Outputs the numeric value that maps
-    to the qualitative state in `self.qualitative_dict`.
+    """Translate FVA min/max values into qualitative flux states.
+
+    Compares minimum and maximum flux values obtained from FVA and assigns
+    each reaction to a qualitative category based on sign, variability, and
+    numerical tolerance.
+
+    Parameters
+    ----------
+    fmin : np.ndarray
+        Array of minimum flux values from FVA.
+
+    fmax : np.ndarray
+        Array of maximum flux values from FVA.
+
+    delta : float, default=1e-4
+        Numerical tolerance used to determine equality to zero.
+
+    Returns
+    -------
+    np.ndarray
+        Array of numeric qualitative codes. These codes can be translated
+        into symbolic labels using `CATEGORY_DICT`.
     """
 
     same_value = np.abs(fmax - fmin) < delta
@@ -41,13 +64,14 @@ def qual_translate(fmin: np.ndarray, fmax: np.ndarray, delta: float = 1e-4) -> n
     zero_max = np.abs(fmax) <= delta
     zero_min = np.abs(fmin) <= delta
 
+    # order of evaluation here is VERY IMPORTANT
     conditions = [
         neg_min & neg_max & same_value,
         neg_min & neg_max,
         neg_min & zero_max,
         zero_min & zero_max, 
         zero_min & pos_max,
-        pos_min & pos_max & same_value,  # order here is VERY IMPORTANT, will fix later
+        pos_min & pos_max & same_value, 
         pos_min & pos_max, 
         neg_min & pos_max, 
     ]
@@ -58,16 +82,53 @@ def qual_translate(fmin: np.ndarray, fmax: np.ndarray, delta: float = 1e-4) -> n
 
 
 class DiatomAnalyze():
+    """Analysis class for polytope construction and flux-based analyses.
+
+    This class encapsulates all analysis steps that require interaction with
+    the metabolic model, including:
+    - Construction of low-dimensional projections of the feasible flux space.
+    - Qualitative Flux Variability Analysis (qFVA) over grid-sampled points.
+    - Quantitative Flux Coupling Analysis (qFCA).
+
+    Parameters
+    ----------
+    diatom : Diatom
+        Parent diatom object providing access to the metabolic model,
+        grid sampler, and I/O utilities.
+
+    Attributes
+    ----------
+    polytope : BaseGeometry
+        2D geometric representation of the projected feasible flux space.
+
+    analyzed_reactions : tuple[str, str]
+        Pair of reaction IDs used to construct the 2D polytope projection.
+
+    fva_reactions : list[str]
+        Reaction IDs selected for Flux Variability Analysis.
+
+    fva_results : np.ndarray, shape (n_points, n_reactions, 2)
+        FVA results over analyzed grid points.
+  
+    qual_vector_df : pd.DataFrame
+        DataFrame containing qualitative flux categories for each reaction and grid point.
+
+    category_dict : dict[float, str]
+        Mapping between numeric qualitative codes and symbolic labels.
+
+    qFCA : pd.DataFrame
+        Results of quantitative Flux Coupling Analysis.
+    """
     def __init__(self, diatom: "Diatom"):
         self.diatom = diatom
         self.polytope: BaseGeometry = Polygon()
 
         self.analyzed_reactions: tuple[str, str] = ("","")
-        self.fva_reactions: list[str]            = []                  
-        self.fva_results: np.ndarray             = np.empty((0, 0, 2)) # shape: (n_points, n_reactions, 2)
+        self.fva_reactions: list[str] = []                  
+        self.fva_results: np.ndarray = np.empty((0, 0, 2)) # shape: (n_points, n_reactions, 2)
 
-        self.qual_vector_df: pd.DataFrame        = pd.DataFrame()     
-        self.category_dict: dict[float, str]     = CATEGORY_DICT
+        self.qual_vector: pd.DataFrame = pd.DataFrame()     
+        self.category_dict: dict[float, str] = CATEGORY_DICT
         self._empty_qual_vector: list[float] | None = None
         self._empty_fva_result: np.ndarray | None = None
 
@@ -75,6 +136,29 @@ class DiatomAnalyze():
 
 
     def _solve_lp_direction(self, reaction_tuple: tuple[str, str], theta: float) -> tuple[float, float]:
+        """Solve a directional LP to obtain a boundary point of the feasible flux space.
+
+        Sets a linear objective defined by angle `theta` over two reactions and
+        maximizes it to obtain an extreme point of the projected feasible region.
+
+        Parameters
+        ----------
+        reaction_tuple : tuple[str, str]
+            Pair of reaction IDs defining the projection axes.
+
+        theta : float
+            Angle (in radians) defining the objective direction in flux space.
+
+        Returns
+        -------
+        tuple[float, float]
+            Optimal flux values for the two reactions along the specified direction.
+
+        Raises
+        ------
+        RuntimeError
+            If the LP optimization does not converge to an optimal solution.
+        """
         c0, c1 = np.cos(theta), np.sin(theta)  
         reaction_id_0, reaction_id_1 = reaction_tuple
         
@@ -95,6 +179,28 @@ class DiatomAnalyze():
 
 
     def project_polytope_2d(self, reaction_tuple: tuple[str, str], n_angles: int = 360) -> None:
+        """Construct a 2D projection of the feasible flux polytope.
+
+        Approximates the boundary of the feasible flux region by solving directional LPs over 
+        a set of evenly spaced angles and computing the convex hull of the resulting boundary points.
+
+        Parameters
+        ----------
+        reaction_tuple : tuple[str, str]
+            Pair of reaction IDs defining the 2D projection axes.
+
+        n_angles : int, default=360
+            Number of angular directions used to sample the polytope boundary.
+            Higher values improve boundary resolution at increased computational cost.
+
+        Attributes Set
+        --------------
+        polytope : BaseGeometry
+            Convex hull of the projected feasible region.
+
+        analyzed_reactions : tuple[str, str]
+            Reactions used to generate the projection.
+        """
         angles = np.linspace(0, 2*np.pi, n_angles, endpoint=False)
         boundary_points = [self._solve_lp_direction(reaction_tuple, theta) for theta in angles]
 
@@ -105,49 +211,61 @@ class DiatomAnalyze():
         self.analyzed_reactions = reaction_tuple
 
 
-    def qualitative_analysis(self, 
-                             x_limits: tuple[float, float] = (-np.inf, np.inf), 
-                             y_limits: tuple[float, float] = (-np.inf, np.inf),
-                             only_load: bool = False, 
-                             **kwargs) -> None:
-        """Run qualitative FVA analysis for all (or feasible) grid points.
+    def qualitative_analysis(
+        self,  
+        x_limits: tuple[float, float] = (-np.inf, np.inf),  
+        y_limits: tuple[float, float] = (-np.inf, np.inf), 
+        only_load: bool = False,  
+        **kwargs,
+    ) -> None:
+        """Run qualitative FVA over selected grid points.
 
-        Generates qualitative vectors and FVA results for each grid point and stores them
-        in `self.qual_vector_df` and `self.fva_results`. If feasible points have been
-        calculated, the analysis is restricted to them, otherwise the full grid is used.
+        Computes qualitative reaction categories and flux variability analysis (FVA)
+        results for grid points within the specified coordinate bounds.
 
-        - qual_vector_df : pd.DataFrame
-            Dataframe containing qualitative categories assigned to each reaction.
-        - fva_results : np.ndarray, shape (n_reactions, 2)
-            Minimum and maximum flux values obtained from FVA.
+        If feasible grid points have been previously computed, the function will load those
+        points in order to not recompute FVA again.
+
+        Parameters
+        ----------
+        x_limits : tuple[float, float], optional
+            Inclusive lower and upper bounds on the x coordinate used to filter grid points.
+        y_limits : tuple[float, float], optional
+            Inclusive lower and upper bounds on the y coordinate used to filter grid points.
+        only_load : bool, default=False
+            If True, restricts the analysis to loaded reactions only.
+
+        Side Effects
+        ------------
+        - Updates `self.qual_vector_df` with qualitative reaction categories for each analyzed grid point.
+        - Updates `self.fva_results` with FVA min/max values per reaction.
+        - Updates `self.diatom.grid.analyzed_points` to set the subset of grid points used in the analysis.
         """
-        points           = self.diatom.grid.points               
-        feasible_points  = self.diatom.grid.feasible_points
+        self.diatom._require(grid_points=True)
+        print("Running qualitative fva over grid feasible points...")
 
-        if feasible_points.size == 0:
-            print("Warning: Feasible points have not been calculated. Running qualitative fva over full grid")
-            df_index = np.arange(points.shape[0])
-        else:
-            print("Running qualitative fva over grid feasible points...")
-            filtered = (points[:, 0] > x_limits[0]) & (points[:, 0] < x_limits[1]) & (points[:, 1] > y_limits[0]) & (points[:, 1] < y_limits[1])
-            analyzed_points = filtered & feasible_points
+        points = self.diatom.grid.points               
+        feasible_points = self.diatom.grid.feasible_points
 
-            points = points[analyzed_points, :]    
-            df_index = np.where(analyzed_points)[0]
+        # select points for analysis
+        filtered = (points[:, 0] > x_limits[0]) & (points[:, 0] < x_limits[1]) & (points[:, 1] > y_limits[0]) & (points[:, 1] < y_limits[1])
+        analyzed_points = filtered & feasible_points
+        self.diatom.grid.analyzed_points = analyzed_points
 
-            self.diatom.grid.analyzed_points = analyzed_points
-        
+        # perform analysis
+        points = points[analyzed_points, :]    
+        df_index = np.where(analyzed_points)[0]
+
         fva_tuples = self._calculate_qual_vectors(points, only_load = only_load, **kwargs)
-            
         qual_vector_list, fva_results = map(list, zip(*fva_tuples))    
-        self.qual_vector_df = pd.DataFrame(np.array(qual_vector_list), columns=self.fva_reactions, index=df_index)
-        #self.diatom.io.save_qual_df()    
 
+        self.qual_vector = pd.DataFrame(np.array(qual_vector_list), columns=self.fva_reactions, index=df_index)
+        #self.diatom.io.save_qual_df()    
         fva_results = np.dstack(fva_results)
         fva_results = np.rollaxis(fva_results, -1)
-        
-        print("Done!\n")
-        self.fva_results = fva_results 
+        self.fva_results = fva_results
+
+        print("Done!\n")         
 
 
     def _calculate_qual_vectors(self, grid_points: np.ndarray, only_load: bool, **kwargs) -> list[tuple]:
@@ -165,10 +283,9 @@ class DiatomAnalyze():
             fva_reactions.sort()
 
             self.fva_reactions = fva_reactions    
-        
-        n_points = grid_points.shape[0]
 
         print("Analyzing point feasibility....")
+        n_points = grid_points.shape[0]
         if only_load:
             fva_tuples = []
             for grid_point in tqdm(grid_points, total=n_points):
@@ -182,12 +299,17 @@ class DiatomAnalyze():
     
     
     def _load_if_stored(self, grid_point: np.ndarray):
+        """Load previously computed qualitative FVA results for a grid point.
+
+        Attempts to retrieve stored qualitative and quantitative FVA results
+        for the given grid point. If no stored result is found, a placeholder
+        result filled with NaNs is returned."""
         loaded = self.diatom.io.load_point(grid_point, "qual_fva")
 
         if isinstance(loaded, tuple):
             return loaded
 
-        # --- fallback: placeholder ---
+        # placeholder
         if self._empty_qual_vector is None or self._empty_fva_result is None:
             n_rxns = len(self.fva_reactions)
             self._empty_qual_vector = [np.nan] * n_rxns
@@ -231,14 +353,11 @@ class DiatomAnalyze():
         analysis is completed.
         """
         
-        
         loaded_point = self.diatom.io.load_point(grid_point, "qual_fva")
         if isinstance(loaded_point, tuple):
             return loaded_point
         
-
         with self.diatom.model as model:
-            
             # fix analyzed reactions to grid point value:
             self.diatom.fix_growth_rates(model, grid_point)
 
@@ -268,12 +387,34 @@ class DiatomAnalyze():
 
     PointList = list[float | int] | list[int] | list[float]
     def quan_FCA(self, grid_x: PointList, grid_y: PointList, reaction_ids: tuple[str, str]) -> None:
-        """Performs quantitative Flux Coupling Analysis on two reactions (rxns_analysis) on points of a sub-grid defined by points grid_x, grid_y.
-        
-        Stores an attribute self.qFCA containing a dataframe with the following columns: 
-            flux_rxns_analysis[0], flux_rxn_analysis[1], FVA (str: minimum or maximum), point (coordinates of point)
+        """Perform quantitative Flux Coupling Analysis (qFCA) on a subgrid.
+
+        Evaluates the coupling between two reactions by fixing the flux of the
+        first reaction across its feasible range and computing the resulting
+        FVA bounds of the second reaction at selected grid points.
+
+        Parameters
+        ----------
+        grid_x : list[float | int]
+            X-coordinates of the subgrid points to analyze.
+
+        grid_y : list[float | int]
+            Y-coordinates of the subgrid points to analyze.
+
+        reaction_ids : tuple[str, str]
+            Pair of reaction IDs `(reference_reaction, coupled_reaction)`.
+
+        Attributes Set
+        --------------
+        qFCA : pd.DataFrame
+            DataFrame containing quantitative coupling results with columns:
+            - flux of reference reaction
+            - flux of coupled reaction
+            - FVA bound type (minimum or maximum)
+            - grid point coordinates
         """
         assert len(reaction_ids) == 2
+        self.diatom._require(grid_points=True)
 
         feasible_points = self.diatom.grid.points[self.diatom.grid.feasible_points]
         reaction_id_0 = reaction_ids[0]
@@ -295,9 +436,6 @@ class DiatomAnalyze():
 
         for point in analyze_points:
             grid_point = feasible_points[point]
-            
-            #print(f'Selected point: {grid_point}')
-
             with self.diatom.model as model:
                 # update bounds nad objectives
                 self.diatom.fix_growth_rates(model, grid_point)

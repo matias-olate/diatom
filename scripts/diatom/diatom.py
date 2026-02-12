@@ -19,16 +19,45 @@ Numerical = int | float
 
 
 class Diatom():
-    """Abstract base class for ecosystem models
+    """
+    Class for handling a diatom metabolic model and its analysis pipeline.
 
-    This class is meant to be inherited and not to be used on its own. 
-    Holds all attributes and methods in common between FullEcosystem and PrecomputedEcosystem."""
+    This class centralizes access to the COBRA model and orchestrates grid sampling,
+    qualitative and quantitative analyses, clustering, plotting, and I/O utilities.
 
-    def __init__(self, model_id: str, model_name: str = "diatom"):
+    Parameters
+    ----------
+    model_id : str
+        Identifier of the metabolic model to load.
+    model_name : str, default="diatom"
+        Name used for outputs and saved artifacts.
+    solver : str, default="gurobi"
+        Linear solver backend to use with COBRApy.
+
+    Attributes
+    ----------
+    model : cobra.Model
+        Loaded COBRA metabolic model.
+    objectives : dict[str, float]
+        Mapping from reaction IDs to objective coefficients.
+    non_blocked : set[str]
+        Set of reaction IDs that are not blocked.
+    grid : DiatomGrid
+        Grid sampling and polytope discretization utilities.
+    analyze : DiatomAnalyze
+        Qualitative and quantitative FVA analysis utilities.
+    clustering : ModelClustering
+        Grid-point clustering and cluster-level analysis utilities.
+    plot : DiatomPlot
+        Visualization utilities.
+    io : ModelIO
+        Input/output utilities for saving and loading results.
+    """
+    def __init__(self, model_id: str, model_name: str = "diatom", solver: str = "gurobi"):
         self.model_id = model_id
         self.model_name = model_name
                                  
-        self.model: Model = load_model(model_id, name = "diatom")
+        self.model: Model = load_model(model_id, name = model_name, solver=solver)
         self.objectives: dict[str, float] = {}
         self.non_blocked: set[str] = set()
 
@@ -39,8 +68,19 @@ class Diatom():
         self.io = ModelIO(self, model_name)
         
 
-
     def set_objective_functions(self, objective_reactions_dict: dict[str, float] | None = None) -> None:
+        """Set the objective function of the model.
+
+        If no objective dictionary is provided, the current objective coefficients
+        defined in the model are read and stored. Otherwise, the objective is replaced
+        by the provided reaction–coefficient mapping.
+
+        Parameters
+        ----------
+        objective_reactions_dict : dict[str, float] or None, default=None
+            Mapping from reaction IDs to linear objective coefficients.
+            If None or empty, the existing model objective is used.
+        """
         model = self.model
 
         # use predefined objective functions
@@ -59,13 +99,20 @@ class Diatom():
 
     
     def modify_bounds(self, bounds_dict: dict[str, tuple[Numerical, Numerical]]) -> None:
+        """Modify reaction bounds in the model.
+
+        Parameters
+        ----------
+        bounds_dict : dict[str, tuple[float, float]]
+            Mapping from reaction IDs to (lower_bound, upper_bound).
+        """
         for reaction_id, bounds in bounds_dict.items():
             reaction = cast(Reaction, self.model.reactions.get_by_id(reaction_id))
             reaction.bounds = bounds
 
 
     def _set_non_blocked_reactions(self) -> None:
-        """Stores all non blocked reactions."""
+        """Identify and store all non-blocked reactions in the model."""
 
         blocked = cobra.flux_analysis.find_blocked_reactions(self.model)
         reactions = cast(Iterable[Reaction], self.model.reactions)
@@ -103,4 +150,31 @@ class Diatom():
             reaction = cast(Reaction, mirror_model.reactions.get_by_id(reaction_id))
             reaction.bounds = (value, value)    
 
+
+    def _require(
+        self, 
+        polytope: bool = False, 
+        grid_points: bool = False, 
+        clusters: bool = False, 
+        qual_vector: bool = False, 
+        qfca: bool = False,
+    ) -> None:
+        """Internal consistency check for required analysis stages.
+
+        Raises a RuntimeError if a requested artifact has not been computed yet.
+        """
+        if polytope and self.analyze.polytope.is_empty:
+            raise RuntimeError(f"Projected polytope not yet computed. Run {self.analyze.project_polytope_2d.__name__} first!")
+
+        if grid_points and self.grid.points.size == 0:
+            raise RuntimeError(f"Grid points not yet computed. Run {self.grid.sample_polytope.__name__} first!")
+        
+        if qual_vector and self.analyze.qual_vector.empty:
+            raise RuntimeError(f"Qualitative FVA values not yet computed. Run {self.analyze.qualitative_analysis.__name__} first!")
+
+        if clusters and self.clustering.grid_clusters.size == 0:
+            raise RuntimeError(f"Clusters not yet computed. Run {self.clustering.set_grid_clusters.__name__} first!")
+
+        if qfca and self.analyze.qFCA.empty:
+            raise RuntimeError(f"qFCA not yet computed. Run {self.analyze.quan_FCA.__name__} first!")
 

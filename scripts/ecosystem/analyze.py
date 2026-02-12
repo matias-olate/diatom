@@ -66,7 +66,7 @@ def qual_translate(fmin: np.ndarray, fmax: np.ndarray, delta: float = 1e-4) -> n
 class EcosystemAnalyze():
     def __init__(self, base_ecosystem: "BaseEcosystem"):
         self.ecosystem = base_ecosystem  
-        self.qual_vector_df: pd.DataFrame       = pd.DataFrame()    # public
+        self.qual_vector: pd.DataFrame       = pd.DataFrame()    # public
         self.fva_reactions: list[str]           = []                # public
         self.fva_results: np.ndarray            = np.array([])
         self.qFCA = None
@@ -245,7 +245,7 @@ class EcosystemAnalyze():
         fva_tuples = self._calculate_qual_vectors(points, member_fractions, update_bounds=update_bounds, **kwargs)
             
         qual_vector_list, fva_results = map(list, zip(*fva_tuples))    
-        self.qual_vector_df = pd.DataFrame(np.array(qual_vector_list), columns=self.fva_reactions, index=df_index)
+        self.qual_vector = pd.DataFrame(np.array(qual_vector_list), columns=self.fva_reactions, index=df_index)
         self.ecosystem.io.save_qual_df()    
 
         fva_results = np.dstack(fva_results)

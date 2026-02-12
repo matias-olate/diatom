@@ -2,7 +2,6 @@ from typing import Callable
 
 import numpy as np
 import pandas as pd
-
 import prince
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import mutual_info_score
@@ -28,68 +27,82 @@ def _safe_div(a: Floating, b: Floating, eps: float = EPS) -> Floating:
 
 
 def minimum(minmax: np.ndarray) -> float:
+    """Minimum feasible flux across all points (lower bound)."""
     return float(np.min(minmax[:, 0]))
 
 
 def maximum(minmax: np.ndarray) -> float:
+    """Maximum feasible flux across all points (upper bound)."""
     return float(np.max(minmax[:, 1]))
 
 
 def mean_range(minmax: np.ndarray) -> float:
+    """Mean flux variability range across points."""
     r = _range(minmax)
     return float(np.mean(r))
 
 
 def mean_midpoint(minmax: np.ndarray) -> float:
+    """Mean midpoint of the feasible flux interval."""
     mid = _midpoint(minmax)
     return float(np.mean(mid))
 
 
 def mean_relative_range(minmax: np.ndarray) -> float:
+    """Mean flux range normalized by the absolute capacity."""
     r = _range(minmax)
     cap = np.maximum(np.abs(minmax[:, 0]), np.abs(minmax[:, 1]))
     return float(np.mean(_safe_div(r, cap)))
 
 
 def median_range(minmax: np.ndarray) -> float:
+    """Median flux variability range."""
     r = _range(minmax)
     return float(np.median(r))
 
 
 def median_midpoint(minmax: np.ndarray) -> float:
+    """Median midpoint of the feasible flux interval."""
     mid = _midpoint(minmax)
     return float(np.median(mid))
 
 
 def box_range(minmax: np.ndarray) -> float:
+    """Interquartile range (IQR) of flux variability ranges."""
     r = _range(minmax)
     return float(np.percentile(r, 75) - np.percentile(r, 25))
 
 
 def frac_variable(minmax: np.ndarray, delta: float = DELTA) -> float:
+    """Fraction of points with non-negligible flux variability."""
     r = _range(minmax)
     return float(np.mean(r > delta))
 
 
 def frac_zero_fixed(minmax: np.ndarray, delta: float = DELTA) -> float:
+    """Fraction of points where the reaction is effectively blocked at zero."""
     return float(np.mean((np.abs(minmax[:, 0]) <= delta) & (np.abs(minmax[:, 1]) <= delta)))
 
 
 def frac_bidirectional(minmax: np.ndarray, delta: float = DELTA) -> float:
+    """Fraction of points allowing flux in both directions."""
     return float(np.mean((minmax[:, 0] < -delta) & (minmax[:, 1] > delta)))
 
 
 def mean_abs_flux(minmax: np.ndarray) -> float:
+    """Mean absolute flux capacity across points."""
     cap = np.maximum(np.abs(minmax[:, 0]), np.abs(minmax[:, 1]))
     return float(np.mean(cap))
 
 
 def std_range(minmax: np.ndarray) -> float:
+    """Standard deviation of flux variability ranges."""
     r = _range(minmax)
     return float(np.std(r))
 
 
 def median_midpoint_over_range_norm(minmax: np.ndarray, eps: float = EPS) -> float:
+    """Median absolute midpoint normalized by flux range."""
     mid = np.abs(_midpoint(minmax))
     r = _range(minmax)
     val = _safe_div(mid, r + eps)
@@ -163,12 +176,14 @@ def _ratio_metric(
 def s_rubisco(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Relative Rubisco carboxylation vs oxygenation activity within a cluster."""
     return _ratio_metric(fva_reactions, fva_results, grid_clusters, cluster_index, ("RUBISC_h", "RUBISO_h"))[0]
 
 
 def photons_per_rubisc_difference_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Normalized difference between photon uptake and Rubisco flux."""
     num_func = lambda x,y: x - y
     return _ratio_metric(fva_reactions, fva_results, grid_clusters, cluster_index, ("EX_photon_e", "RUBISC_h"), num_func=num_func)[0]
 
@@ -176,12 +191,14 @@ def photons_per_rubisc_difference_ratio(
 def photons_per_rubisc_simple_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Photon uptake to Rubisco flux ratio."""
     return _ratio_metric(fva_reactions, fva_results, grid_clusters, cluster_index, ("EX_photon_e", "RUBISC_h"))[1]
 
 
 def no3_per_rubisc_difference_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Normalized difference between nitrate uptake and Rubisco flux."""
     num_func = lambda x,y: x - y
     return _ratio_metric(fva_reactions, fva_results, grid_clusters, cluster_index, ("EX_no3_e", "RUBISC_h"), num_func=num_func)[0]
 
@@ -189,12 +206,14 @@ def no3_per_rubisc_difference_ratio(
 def no3_per_rubisc_simple_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Nitrate uptake to Rubisco flux ratio."""
     return _ratio_metric(fva_reactions, fva_results, grid_clusters, cluster_index, ("EX_no3_e", "RUBISC_h"))[1]
 
 
 def co2_per_rubisc_difference_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Normalized difference between CO2 uptake and Rubisco flux."""
     num_func = lambda x,y: x - y
     return _ratio_metric(fva_reactions, fva_results, grid_clusters, cluster_index, ("EX_co2_e", "RUBISC_h"), num_func=num_func)[0]
 
@@ -202,6 +221,7 @@ def co2_per_rubisc_difference_ratio(
 def co2_per_rubisc_simple_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """CO2 uptake to Rubisco flux ratio."""
     return _ratio_metric(fva_reactions, fva_results, grid_clusters, cluster_index, ("EX_co2_e", "RUBISC_h"))[1]
 
 
@@ -215,6 +235,7 @@ def _all_reaction_ranges(fva_results: np.ndarray, grid_clusters: np.ndarray, clu
 def mean_range_all_reactions(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Mean flux variability range across all reactions in the cluster."""
     ranges = _all_reaction_ranges(fva_results, grid_clusters, cluster_index)
     return float(np.mean(ranges))
 
@@ -222,6 +243,7 @@ def mean_range_all_reactions(
 def std_range_all_reactions(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Standard deviation of flux variability ranges across reactions."""
     ranges = _all_reaction_ranges(fva_results, grid_clusters, cluster_index)
     return float(np.std(ranges))
 
@@ -229,6 +251,7 @@ def std_range_all_reactions(
 def blocked_fraction_all_reactions(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int, delta: float = DELTA
     ) -> float:
+    """Fraction of reactions that are blocked across all points in the cluster."""
     ranges = _all_reaction_ranges(fva_results, grid_clusters, cluster_index)
     blocked = np.all(np.abs(ranges) < delta, axis=0)  # (n_rxns,)
     return float(np.mean(blocked))
@@ -246,6 +269,7 @@ def _median_range(
 def no3_to_co2_capacity_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int
     ) -> float:
+    """Relative nitrate vs CO2 flux capacity based on median ranges."""
     r_no3 = abs(_median_range(fva_reactions, fva_results, grid_clusters, cluster_index, "EX_no3_e"))
     r_co2 = abs(_median_range(fva_reactions, fva_results, grid_clusters, cluster_index, "EX_co2_e"))
     return float(_safe_div(r_no3 - r_co2, r_no3 + r_co2))
@@ -274,12 +298,14 @@ def _no3_per_N_biomass(
 def no3_per_N_biomass_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int,
     ) -> float:
+    """Relative nitrate uptake compared to total nitrogen biomass synthesis."""
     return _no3_per_N_biomass(fva_reactions, fva_results, grid_clusters, cluster_index)[0]
 
 
 def no3_per_N_biomass_sum(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int,
     ) -> float:
+    """Total nitrate plus nitrogen biomass flux capacity."""
     return _no3_per_N_biomass(fva_reactions, fva_results, grid_clusters, cluster_index)[1]
 
 
@@ -306,12 +332,14 @@ def _co2_per_C_biomass(
 def co2_per_C_biomass_ratio(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int,
     ) -> float:
+    """Relative CO2 uptake compared to total carbon biomass synthesis."""
     return _co2_per_C_biomass(fva_reactions, fva_results, grid_clusters, cluster_index)[0]
 
 
 def co2_per_C_biomass_sum(
         fva_reactions: list[str], fva_results: np.ndarray, grid_clusters: np.ndarray, cluster_index: int,
     ) -> float:
+    """Total CO2 plus carbon biomass flux capacity."""
     return _co2_per_C_biomass(fva_reactions, fva_results, grid_clusters, cluster_index)[1]
 
 
@@ -378,6 +406,7 @@ def first_mixed_merge_height(reaction_states: np.ndarray, linkage_matrix: np.nda
 
 
 def intra_inter(reaction_states: np.ndarray, clusters: np.ndarray, **kwargs) -> float:
+    """Difference between inter-cluster disagreement and intra-cluster heterogeneity."""
     cluster_ids = np.unique(clusters)
 
     # ---------- intra ----------
@@ -439,17 +468,19 @@ def _inter_cluster_disagreement(states_a: np.ndarray, states_b: np.ndarray) -> f
 
 
 def mutual_information(reaction_states: np.ndarray, clusters: np.ndarray, **kwargs) -> float:
+    """Mutual information between reaction states and cluster assignments."""
     return float(mutual_info_score(reaction_states, clusters))
 
 
 def entropy(reaction_states: np.ndarray, eps: float = 1e-12, **kwargs) -> float:
-    """Entropía categórica H(X)."""
+    """Categorical entropy of reaction states."""
     values, counts = np.unique(reaction_states, return_counts=True)
     p = counts / counts.sum()
     return -np.sum(p * np.log(p + eps))
 
 
 def std_normalized(fva_result: np.ndarray, eps: float = 1e-12, **kwargs) -> float:
+    """Standard deviation of flux ranges normalized by their mean."""
     ranges = fva_result[:, 1] - fva_result[:, 0]  # rango por punto
     return float(np.std(ranges) / (np.mean(ranges) + eps))
 
@@ -464,7 +495,7 @@ PER_REACTION_SCORE_FUNCTIONS = [
 
 
 def rf_importance(qual_vector_df: pd.DataFrame, grid_clusters: np.ndarray, n_estimators: int = 100, **kwargs) -> pd.Series:
-    """Identifica qué reacciones son las más importantes para predecir la pertenencia a los clusters usando Random Forest."""
+    """Reaction importance based on Random Forest prediction of cluster labels."""
     if qual_vector_df.empty or grid_clusters.size == 0:
         raise RuntimeError("Datos insuficientes (DF vacío o clusters no calculados).")
 
@@ -481,26 +512,7 @@ def rf_importance(qual_vector_df: pd.DataFrame, grid_clusters: np.ndarray, n_est
 
 
 def mca_score(qual_vector_df: pd.DataFrame, n_components: int = 5, state_prefix: str = "s", min_nunique: int = 2, random_state: int = 42, **kwargs) -> pd.Series:
-    """MCA no supervisado para selección de reacciones a partir de qual_vector_df.
-
-    Parameters
-    ----------
-    qual_vector_df : pd.DataFrame
-        Filas = observaciones, columnas = reacciones,
-        valores = estados cualitativos (numéricos pero categóricos).
-    n_components : int
-        Número de ejes MCA.
-    state_prefix : str
-        Prefijo para codificar estados (evita ambigüedad numérica).
-    min_nunique : int
-        Número mínimo de estados distintos para conservar una reacción.
-    random_state : int
-
-    Returns
-    -------
-    pd.Series
-        Índice = reacción, valor = score MCA (mayor = más explicativa).
-    """
+    """Unsupervised reaction relevance score using Multiple Correspondence Analysis."""
     # filter non informative columns
     informative_cols = qual_vector_df.columns[qual_vector_df.nunique(dropna=True) >= min_nunique]
     if len(informative_cols) == 0:
