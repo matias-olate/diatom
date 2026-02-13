@@ -38,7 +38,7 @@ class DiatomPlot():
         Intended mainly for debugging geometry and projection consistency.
         """
         self.diatom._require(set_instance=True, polytope=True)
-        poly = self.diatom.analyze.polytope
+        poly = self.diatom.projection.polytope
         grid = self.diatom.grid
 
         _, lines = grid._build_grid()
@@ -99,13 +99,13 @@ class DiatomPlot():
             Marker transparency.
         """
         self.diatom._require(polytope=True, grid_points=True, clusters=True)
+      
+        poly = self.diatom.projection.polytope
         
         grid = self.diatom.grid
-        analyze = self.diatom.analyze
-
-        poly = analyze.polytope
         points = grid.points
         analyzed = grid.analyzed_points
+
         clusters = self.diatom.clustering.grid_clusters
 
         points = points[analyzed]
@@ -131,7 +131,7 @@ class DiatomPlot():
             cbar.ax.set_yticklabels([f"C{i}" for i in range(1, k+1)])
             cbar.set_label("Cluster ID")
 
-        reaction1, reaction2 = analyze.analyzed_reactions
+        reaction1, reaction2 = self.diatom.analyze.analyzed_reactions
         ax.set_xlabel(reaction1)
         ax.set_ylabel(reaction2)
         ax.set_title(f"Feasible Polytope Sampling ({reaction1} - {reaction2})")

@@ -6,6 +6,7 @@ import cobra
 from cobra import Model, Reaction
 from cobra.util.solver import linear_reaction_coefficients
 
+from .polytope import Projection
 from .analyze import DiatomAnalyze
 from .grid import DiatomGrid
 from .plot import DiatomPlot
@@ -60,6 +61,7 @@ class Diatom():
         self.non_blocked: set[str] 
         self.constraints: dict[str, tuple[Numerical, Numerical]] 
 
+        self.projection = Projection(self)
         self.grid = DiatomGrid(self)
         self.analyze = DiatomAnalyze(self)
         self.plot = DiatomPlot(self)
@@ -169,8 +171,8 @@ class Diatom():
         if set_instance and not self._is_sampling_instance_set:
             raise RuntimeError(f"Sampling instance hasn't been set yet. Run {self.set_sampling_instance.__name__} first!")
         
-        if polytope and self.analyze.polytope.is_empty:
-            raise RuntimeError(f"Projected polytope not yet computed. Run {self.analyze.project_polytope_2d.__name__} first!")
+        if polytope and self.projection.polytope.is_empty:
+            raise RuntimeError(f"Projected polytope not yet computed. Run {self.projection.project_polytope_2d.__name__} first!")
 
         if grid_points and self.grid.points.size == 0:
             raise RuntimeError(f"Grid points not yet computed. Run {self.grid.sample_polytope.__name__} first!")
@@ -189,7 +191,6 @@ class Diatom():
         self,
         constraints: dict[str, tuple[Numerical, Numerical]],
         reaction_tuple: tuple[str, str],
-        n_sampling_angles: int,
         grid_delta: float,
         n_clusters: int,
         save_files: bool,
@@ -282,7 +283,6 @@ class Diatom():
         constraints = dict(sorted(constraints.items()))
         self.constraints = constraints
 
-        assert isinstance(n_sampling_angles, int) and n_sampling_angles > 0
         assert isinstance(grid_delta, float) and grid_delta > 0 and grid_delta <= 1
         assert isinstance(n_clusters, int) and n_clusters > 0
         assert isinstance(save_files, bool)
@@ -293,7 +293,6 @@ class Diatom():
         self._modify_bounds(constraints)
 
         self.analyze.analyzed_reactions = reaction_tuple
-        self.analyze.n_sampling_angles = n_sampling_angles
         self.grid.grid_delta = grid_delta
         self.clustering.initial_n_clusters = n_clusters
 

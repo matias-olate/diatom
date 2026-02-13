@@ -95,7 +95,7 @@ class ModelIO():
         
         Assumes a sampling hash has already been set, and using it alongside the numeric identifier
         files can be saved and loaded safely without overwriting previous results."""
-        n_sampling_angles = self.modelclass.analyze.n_sampling_angles
+        n_sampling_angles = self.modelclass.projection.n_sampling_angles
         grid_delta = self.modelclass.grid.grid_delta
         initial_n_clusters = self.modelclass.clustering.initial_n_clusters
 
@@ -175,7 +175,7 @@ class ModelIO():
             "n_constraints": self.modelclass.metadata["n_constraints"],
             # numerical config
             "sampling_parameters": {
-                "n_sampling_angles": self.modelclass.analyze.n_sampling_angles,
+                "n_sampling_angles": self.modelclass.projection.n_sampling_angles,
                 "grid_delta": self.modelclass.grid.grid_delta,
                 "n_clusters": self.modelclass.clustering.initial_n_clusters,
             },

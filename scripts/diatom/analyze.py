@@ -5,8 +5,6 @@ import pandas as pd
 from tqdm import tqdm
 from cobra import Reaction
 from cobra.flux_analysis import flux_variability_analysis
-from shapely.geometry import Polygon
-from shapely.geometry.base import BaseGeometry
 
 if TYPE_CHECKING:
     from .diatom import Diatom
@@ -125,8 +123,6 @@ class DiatomAnalyze():
     """
     def __init__(self, diatom: "Diatom"):
         self.diatom = diatom
-        self.polytope: BaseGeometry
-        self.n_sampling_angles: int = 0
 
         self.analyzed_reactions: tuple[str, str] 
         self.fva_reactions: list[str] = []      
@@ -138,73 +134,6 @@ class DiatomAnalyze():
         self._empty_fva_result: np.ndarray | None = None
 
         self.qFCA: pd.DataFrame = pd.DataFrame()
-
-
-    def _solve_lp_direction(self, reaction_tuple: tuple[str, str], theta: float) -> tuple[float, float]:
-        """Solve a directional LP to obtain a boundary point of the feasible flux space.
-
-        Sets a linear objective defined by angle `theta` over two reactions and
-        maximizes it to obtain an extreme point of the projected feasible region.
-
-        Parameters
-        ----------
-        reaction_tuple : tuple[str, str]
-            Pair of reaction IDs defining the projection axes.
-
-        theta : float
-            Angle (in radians) defining the objective direction in flux space.
-
-        Returns
-        -------
-        tuple[float, float]
-            Optimal flux values for the two reactions along the specified direction.
-
-        Raises
-        ------
-        RuntimeError
-            If the LP optimization does not converge to an optimal solution.
-        """
-        c0, c1 = np.cos(theta), np.sin(theta)  
-        reaction_id_0, reaction_id_1 = reaction_tuple
-        
-        with self.diatom.model as model: 
-            reaction_0 = model.reactions.get_by_id(reaction_id_0)
-            reaction_1 = model.reactions.get_by_id(reaction_id_1)
-
-            model.objective = {reaction_0: c0, reaction_1: c1}
-
-            solution = model.optimize('maximize')  
-            if solution.status != "optimal":
-                raise RuntimeError(f"projection failed at theta = {theta}")
-
-            flux_0 = solution.fluxes[reaction_0.id]
-            flux_1 = solution.fluxes[reaction_1.id]
-
-            return float(flux_0), float(flux_1)
-
-
-    def project_polytope_2d(self) -> None:
-        """Construct a 2D projection of the feasible flux polytope.
-
-        Approximates the boundary of the feasible flux region by solving directional LPs over 
-        a set of evenly spaced angles and computing the convex hull of the resulting boundary points.
-
-        Attributes Set
-        --------------
-        polytope : BaseGeometry
-            Convex hull of the projected feasible region.
-
-        analyzed_reactions : tuple[str, str]
-            Reactions used to generate the projection.
-        """
-        self.diatom._require(set_instance=True)
-        angles = np.linspace(0, 2*np.pi, self.n_sampling_angles, endpoint=False)
-        boundary_points = [self._solve_lp_direction(self.analyzed_reactions, theta) for theta in angles]
-
-        boundary_points = np.unique(boundary_points, axis = 0)
-        poly = Polygon(boundary_points).buffer(0)
-
-        self.polytope = poly
 
 
     def qualitative_analysis(

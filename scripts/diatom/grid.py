@@ -84,7 +84,7 @@ class DiatomGrid():
 
     def _intersection_points(self, lines: BaseGeometry) -> NDArray[np.floating]:
         """Gets all the points that intersect the polytope and the grid sampling lines."""
-        poly = self.diatom.analyze.polytope
+        poly = self.diatom.projection.polytope
         inter = intersection_all([lines, poly.boundary])
 
         points = [(g.x, g.y) for g in self._iter_geoms(inter) if isinstance(g, Point)]
@@ -124,7 +124,7 @@ class DiatomGrid():
         """
         self.diatom._require(set_instance=True, polytope=True)
 
-        poly = self.diatom.analyze.polytope
+        poly = self.diatom.projection.polytope
         prepared_poly = prep(poly.buffer(eps))
 
         covers_xy = getattr(prepared_poly, "covers_xy", None)
@@ -173,7 +173,7 @@ class DiatomGrid():
         
         """
         delta = self.grid_delta
-        poly = self.diatom.analyze.polytope
+        poly = self.diatom.projection.polytope
 
         minx, miny, maxx, maxy = poly.bounds
         interval_x = maxx - minx
