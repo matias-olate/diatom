@@ -1,0 +1,83 @@
+{
+    "experiment_hash": "CarbonAnalysis_alpha_0.1_#2038094fc7c91f95",
+    "model_file": "iLB1027_lipid.xml",
+    "model_hash": "155cc3eaf6eb7fe6105855961f4db75bfc66cf72e1b3ac04e205b9dda9121587",
+    "reaction_tuple": [
+        "DM_biomass_c",
+        "EX_ci_e"
+    ],
+    "metabolites": [
+        {
+            "compartment": "e",
+            "formula": "Ci",
+            "metabolite_id": "ci_e",
+            "name": "Inorganic Carbon"
+        }
+    ],
+    "reactions": [
+        {
+            "CI_CO2_e": {
+                "ci_e": "-1.0",
+                "co2_e": "1.0"
+            },
+            "CI_HCO3_e": {
+                "ci_e": "-1.0",
+                "hco3_e": "1.0"
+            },
+            "EX_ci_e": {
+                "ci_e": "-1.0"
+            }
+        }
+    ],
+    "bound_constraints": {
+        "EX_ci_e": [
+            "-25.0",
+            "0.0"
+        ],
+        "EX_co2_e": [
+            "0.0",
+            "0.0"
+        ],
+        "EX_hco3_e": [
+            "0.0",
+            "0.0"
+        ],
+        "EX_nh4_e": [
+            "0.0",
+            "0.0"
+        ],
+        "EX_no3_e": [
+            "-2.0",
+            "0.0"
+        ],
+        "EX_photon_e": [
+            "-100.0",
+            "0.0"
+        ]
+    },
+    "flux_constraints": [
+        {
+            "expression": {
+                "CI_CO2_e": "1.0",
+                "EX_ci_e": "0.1"
+            },
+            "name": "CI_CO2_coupling",
+            "ub": "0.0"
+        },
+        {
+            "expression": {
+                "CI_HCO3_e": "1.0",
+                "EX_ci_e": "0.9"
+            },
+            "name": "CI_HCO3_coupling",
+            "ub": "0.0"
+        }
+    ],
+    "use_pfba": false,
+    "pfba_fraction_of_optimum": 1.0,
+    "environment": {
+        "python_version": "3.10.19",
+        "platform": "Linux-6.6.87.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+        "created_at": "2026-02-24T01:47:36.005946"
+    }
+}

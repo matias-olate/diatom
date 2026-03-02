@@ -16,7 +16,7 @@ def _range(minmax: np.ndarray) -> np.ndarray:
 
 
 def _safe_div(a: Floating, b: Floating, eps: float = EPS) -> Floating:
-    return a / (b + eps)
+    return a / b if abs(b) > eps else np.nan
 
 
 # ====================================== REACTION METRICS ======================================
@@ -79,11 +79,6 @@ def frac_bidirectional(minmax: np.ndarray, delta: float = NON_ZERO_TOLERANCE) ->
     return float(np.mean((minmax[:, 0] < -delta) & (minmax[:, 1] > delta)))
 
 
-def mean_abs_flux(minmax: np.ndarray) -> float:
-    """Mean absolute flux capacity across points."""
-    cap = np.maximum(np.abs(minmax[:, 0]), np.abs(minmax[:, 1]))
-    return float(np.mean(cap))
-
 
 REACTION_METRIC_LIST: list[Callable] = [
     minimum,
@@ -92,10 +87,9 @@ REACTION_METRIC_LIST: list[Callable] = [
     mean_midpoint,
     median_range,
     median_midpoint,
-    mean_abs_flux,
     std_range,
-    frac_variable,
     frac_fixed,
+    frac_variable,
     frac_bidirectional,
 ]
 
@@ -127,68 +121,129 @@ def _filtered_minmax(
     return fva_results[mask, idx, :]
 
 
-def _median_range(
-    fva_reactions: list[str], 
-    fva_results: np.ndarray, 
-    clusters: np.ndarray, 
-    cluster_index: int, 
-    reaction_id: str,
-) -> float:
-    minmax = _filtered_minmax(fva_reactions, fva_results, clusters, cluster_index, reaction_id)
-    return float(np.median(_range(minmax)))
-
-
 def _all_reaction_ranges(
-    fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int
-) -> np.ndarray:
+    fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int,
+) -> tuple[np.ndarray, ...]:
     mask = _cluster_mask(clusters, cluster_index)
     filtered = fva_results[mask, :, :]  # (n_points, n_rxns, 2)
-    ranges = filtered[:, :, 1] - filtered[:, :, 0]
-    return ranges
+    vmax, vmin = filtered[:, :, 1], filtered[:, :, 0]
+    ranges = vmax - vmin
+    return ranges, vmax, vmin
 
 
-def mean_range_all_reactions(
-    fva_reactions: list[str], fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int
+def cluster_mean_range(
+    fva_reactions: list[str], fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int,
 ) -> float:
     """Mean flux variability range across all reactions in the cluster."""
-    ranges = _all_reaction_ranges(fva_results, clusters, cluster_index)
+    ranges, _, _ = _all_reaction_ranges(fva_results, clusters, cluster_index)
     return float(np.mean(ranges))
 
 
-def median_range_all_reactions(
-    fva_reactions: list[str], fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int
+def cluster_median_range(
+    fva_reactions: list[str], fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int,
 ) -> float:
     """Median flux variability range across all reactions in the cluster."""
-    ranges = _all_reaction_ranges(fva_results, clusters, cluster_index)
+    ranges, _, _ = _all_reaction_ranges(fva_results, clusters, cluster_index)
     return float(np.median(ranges))
 
 
-def std_range_all_reactions(
-    fva_reactions: list[str], fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int
+def cluster_std_range(
+    fva_reactions: list[str], fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int,
 ) -> float:
     """Standard deviation of flux variability ranges across reactions."""
-    ranges = _all_reaction_ranges(fva_results, clusters, cluster_index)
+    ranges, _, _ = _all_reaction_ranges(fva_results, clusters, cluster_index)
     return float(np.std(ranges))
 
 
-def blocked_fraction_all_reactions(
-    fva_reactions: list[str], 
+# currently inefficient, computes all metrics each time it's called. still very fast
+# it should define all metrics in a single call 
+def _reaction_category_metrics(
     fva_results: np.ndarray, 
     clusters: np.ndarray, 
     cluster_index: int, 
     delta: float = NON_ZERO_TOLERANCE,
+) -> dict[str, float]:
+    ranges, vmax, vmin = _all_reaction_ranges(fva_results, clusters, cluster_index)
+    
+    fixed = np.all(np.abs(ranges) <= delta, axis=0)
+    exists_positive_flux = np.any(vmax > delta, axis=0)
+    exists_negative_flux = np.any(vmin < -delta, axis=0)
+    unidirectional_mandatory_flux = (np.all(vmin > delta, axis=0) ^ np.all(vmax < -delta, axis=0))
+
+    blocked_flux = np.all((np.abs(vmin) <= delta) & (np.abs(vmax) <= delta), axis=0)
+
+    fixed_active = fixed & unidirectional_mandatory_flux
+    flux_plastic = ~fixed & unidirectional_mandatory_flux
+
+    positive_flux = np.all(np.abs(vmin) <= delta, axis=0) & exists_positive_flux
+    negative_flux = np.all(np.abs(vmax) <= delta, axis=0) & exists_negative_flux
+    optional_flux = ~fixed & (negative_flux ^ positive_flux)
+
+    bidirectional_flux = (exists_positive_flux & exists_negative_flux) 
+
+    return {
+        "blocked_flux": float(np.mean(blocked_flux)),
+        "fixed_flux": float(np.mean(fixed_active)),
+        "mandatory_variable_flux": float(np.mean(flux_plastic)),
+        "optional_variable_flux": float(np.mean(optional_flux)),   # 0+ o -0
+        "bidirectional_flux": float(np.mean(bidirectional_flux)),   # -+
+    }
+
+
+def blocked_reactions_fraction(
+    fva_reactions: list[str], 
+    fva_results: np.ndarray, 
+    clusters: np.ndarray, 
+    cluster_index: int, 
 ) -> float:
-    """Fraction of reactions that are blocked across all points in the cluster."""
-    ranges = _all_reaction_ranges(fva_results, clusters, cluster_index)
-    blocked = np.all(np.abs(ranges) < delta, axis=0)  # (n_rxns,)
-    return float(np.mean(blocked))
+    return _reaction_category_metrics(fva_results, clusters, cluster_index)["blocked_flux"]
+
+
+def fixed_flux_reactions_fraction(
+    fva_reactions: list[str], 
+    fva_results: np.ndarray, 
+    clusters: np.ndarray, 
+    cluster_index: int, 
+) -> float:
+    return _reaction_category_metrics(fva_results, clusters, cluster_index)["fixed_flux"]
+
+
+def mandatory_variable_flux_reactions_fraction(
+    fva_reactions: list[str], 
+    fva_results: np.ndarray, 
+    clusters: np.ndarray, 
+    cluster_index: int, 
+) -> float:
+    return _reaction_category_metrics(fva_results, clusters, cluster_index)["mandatory_variable_flux"]
+
+
+def optional_variable_flux_reactions_fraction(
+    fva_reactions: list[str], 
+    fva_results: np.ndarray, 
+    clusters: np.ndarray, 
+    cluster_index: int, 
+) -> float:
+    return _reaction_category_metrics(fva_results, clusters, cluster_index)["optional_variable_flux"]
+
+
+def bidirectional_flux_reactions_fraction(
+    fva_reactions: list[str], 
+    fva_results: np.ndarray, 
+    clusters: np.ndarray, 
+    cluster_index: int, 
+) -> float:
+    return _reaction_category_metrics(fva_results, clusters, cluster_index)["bidirectional_flux"]
 
 
 GLOBAL_METRIC_LIST: list[Callable] = [
-    mean_range_all_reactions,
-    median_range_all_reactions,
-    std_range_all_reactions,
-    blocked_fraction_all_reactions,
+    cluster_mean_range,
+    cluster_median_range,
+    cluster_std_range,
+    blocked_reactions_fraction,
+    fixed_flux_reactions_fraction,
+    mandatory_variable_flux_reactions_fraction,
+    optional_variable_flux_reactions_fraction,
+    bidirectional_flux_reactions_fraction,
 ]
 
 
@@ -264,17 +319,4 @@ def ratio_metric(
     den = den_func(m1, m2) if den_func is not None else m2
 
     return float(_safe_div(num, den))
-
-
-@error_handler
-def no3_to_co2_capacity_ratio(
-    fva_reactions: list[str], fva_results: np.ndarray, clusters: np.ndarray, cluster_index: int
-) -> float:
-    """Relative nitrate vs CO2 flux capacity based on median ranges."""
-    r_no3 = abs(_median_range(fva_reactions, fva_results, clusters, cluster_index, "NO3t_e"))
-    r_co2 = abs(_median_range(fva_reactions, fva_results, clusters, cluster_index, "CO2t_e"))
-    return float(_safe_div(r_no3 - r_co2, r_no3 + r_co2))
-
-
-#GLOBAL_METRIC_LIST.append(no3_to_co2_capacity_ratio)
 

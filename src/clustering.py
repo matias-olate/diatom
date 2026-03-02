@@ -650,8 +650,9 @@ class Clustering():
 
         metric.__name__ = metric_name
 
-        if add_to_metrics:
-            self.global_metrics.append(metric)
+        if add_to_metrics and metric not in self.global_metrics:
+            if not any(m.__name__ == metric_name for m in self.global_metrics):
+                self.global_metrics.append(metric)
 
     
     def show_all_metrics(self) -> None:
