@@ -1,4 +1,5 @@
 # Diatom
+Originally forked from [https://github.com/mathomics/ecosystem](https://github.com/mathomics/ecosystem).
 
 ## Installation
 This project uses **uv** for Python dependency management, **Gurobi** as an external LP solver, and **Jupyter notebooks** for analysis.
